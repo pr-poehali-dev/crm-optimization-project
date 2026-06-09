@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/icon';
-import { CLIENTS, USERS, DEALS, type Client } from '@/data/mock';
+import { USERS, type Client } from '@/data/mock';
+import { useStore } from '@/data/store';
 
 const statusColors: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700',
@@ -15,7 +16,8 @@ interface ClientModalProps {
 }
 
 function ClientModal({ client, onClose }: ClientModalProps) {
-  const deals = DEALS.filter(d => d.clientId === client?.id);
+  const { deals } = useStore();
+  const clientDeals = deals.filter(d => d.clientId === client?.id);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
@@ -61,11 +63,11 @@ function ClientModal({ client, onClose }: ClientModalProps) {
           </div>
         )}
 
-        {deals.length > 0 && (
+        {clientDeals.length > 0 && (
           <div className="mt-5">
             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Сделки</p>
             <div className="space-y-2">
-              {deals.map(d => (
+              {clientDeals.map(d => (
                 <div key={d.id} className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/50 text-sm">
                   <span className="font-medium text-foreground truncate mr-2">{d.title}</span>
                   <span className="font-bold text-foreground flex-shrink-0">{(d.amount / 1000).toFixed(0)}K ₽</span>
@@ -80,11 +82,12 @@ function ClientModal({ client, onClose }: ClientModalProps) {
 }
 
 export default function Clients() {
+  const { clients } = useStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selected, setSelected] = useState<Client | null>(null);
 
-  const filtered = CLIENTS.filter(c => {
+  const filtered = clients.filter(c => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.company.toLowerCase().includes(search.toLowerCase()) ||
       c.email.toLowerCase().includes(search.toLowerCase());
@@ -97,7 +100,7 @@ export default function Clients() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Клиенты</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">{CLIENTS.length} клиентов в базе</p>
+          <p className="text-muted-foreground text-sm mt-0.5">{clients.length} клиентов в базе</p>
         </div>
         <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all hover:opacity-90 hover:shadow-lg"
           style={{ background: 'hsl(244 80% 60%)' }}>
