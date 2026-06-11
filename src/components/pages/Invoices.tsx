@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import Icon from '@/components/ui/icon';
 import { CLIENTS, USERS, type Invoice, type InvoiceItem, SELF_EMPLOYED_DEFAULT, type SelfEmployedInfo } from '@/data/mock';
 import { useStore, addInvoice } from '@/data/store';
@@ -10,112 +10,153 @@ const statusConfig: Record<string, { label: string; badge: string }> = {
   overdue: { label: 'Просрочен', badge: 'bg-rose-100 text-rose-700' },
 };
 
-// ── Beautiful invoice template for print/PDF ─────────────────────────────────
+// ── Strict business invoice template ─────────────────────────────────────────
 function InvoiceTemplate({ invoice, client, deal }: { invoice: Invoice; client: ReturnType<typeof CLIENTS.find>; deal: string }) {
   const se = invoice.selfEmployed;
   const total = invoice.items.reduce((s, i) => s + i.qty * i.price, 0);
+  const S = {
+    page: { fontFamily: 'Arial, sans-serif', background: '#fff', color: '#000', padding: '32px 40px', fontSize: 12, lineHeight: 1.4 } as React.CSSProperties,
+    title: { fontSize: 18, fontWeight: 700, letterSpacing: 0, marginBottom: 2, color: '#000' } as React.CSSProperties,
+    sub: { fontSize: 12, color: '#555', marginBottom: 0 } as React.CSSProperties,
+    divider: { borderTop: '2px solid #000', margin: '16px 0' } as React.CSSProperties,
+    thinDivider: { borderTop: '1px solid #ccc', margin: '10px 0' } as React.CSSProperties,
+    label: { fontSize: 10, textTransform: 'uppercase' as const, letterSpacing: 1, color: '#777', marginBottom: 3 },
+    row: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 32 } as React.CSSProperties,
+    block: { flex: 1 } as React.CSSProperties,
+    name: { fontWeight: 700, fontSize: 13, marginBottom: 4 } as React.CSSProperties,
+    detail: { fontSize: 11, color: '#444', lineHeight: 1.65 } as React.CSSProperties,
+    tableWrap: { border: '1px solid #000', marginBottom: 0 } as React.CSSProperties,
+    th: { padding: '7px 10px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.5, borderBottom: '1px solid #000', background: '#f5f5f5', textAlign: 'left' as const } as React.CSSProperties,
+    thR: { padding: '7px 10px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, borderBottom: '1px solid #000', background: '#f5f5f5', textAlign: 'right' as const } as React.CSSProperties,
+    td: { padding: '8px 10px', fontSize: 12, borderBottom: '1px solid #e5e5e5', verticalAlign: 'top' as const } as React.CSSProperties,
+    tdR: { padding: '8px 10px', fontSize: 12, borderBottom: '1px solid #e5e5e5', textAlign: 'right' as const, verticalAlign: 'top' as const } as React.CSSProperties,
+  };
 
   return (
-    <div id="invoice-print" style={{ fontFamily: "'Golos Text', sans-serif", background: '#fff', width: '100%', minHeight: '297mm', padding: '0', color: '#1a1a2e' }}>
-      {/* Header stripe */}
-      <div style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4338ca 100%)', padding: '40px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div id="invoice-print" style={S.page}>
+      {/* Header */}
+      <div style={S.row}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: '#fff' }}>⚡</div>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>CRM Pro</span>
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>Счёт на оплату</div>
-          <div style={{ color: '#fff', fontSize: 32, fontWeight: 800 }}>№ {invoice.number}</div>
+          <div style={S.title}>СЧЁТ НА ОПЛАТУ № {invoice.number}</div>
+          <div style={S.sub}>от {new Date(invoice.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 4 }}>Дата выставления</div>
-          <div style={{ color: '#fff', fontWeight: 600, fontSize: 15 }}>{new Date(invoice.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-          <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '4px 12px', color: '#fff', fontSize: 12 }}>Оплатить до: {new Date(invoice.dueDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+          <div style={{ fontSize: 11, color: '#555', marginBottom: 2 }}>Срок оплаты</div>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>{new Date(invoice.dueDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
         </div>
       </div>
 
-      <div style={{ padding: '40px 48px', space: 24 }}>
-        {/* Parties */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 36 }}>
-          <div style={{ background: '#f8f7ff', borderRadius: 12, padding: '20px 24px', borderLeft: '4px solid #4338ca' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Исполнитель</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1a2e', marginBottom: 8 }}>{se.fullName}</div>
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
-              <div>ИНН: {se.inn}</div>
-              <div>Самозанятый</div>
-              <div>{se.phone}</div>
-            </div>
-          </div>
-          <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '20px 24px', borderLeft: '4px solid #22c55e' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Заказчик</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1a2e', marginBottom: 8 }}>{client?.name}</div>
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
-              <div>{client?.company}</div>
-              {client?.inn && <div>ИНН: {client.inn}</div>}
-              <div>{client?.email}</div>
-              <div>{client?.phone}</div>
-            </div>
+      <div style={S.divider} />
+
+      {/* Parties */}
+      <div style={S.row}>
+        <div style={S.block}>
+          <div style={S.label}>Исполнитель</div>
+          <div style={S.name}>{se.fullName}</div>
+          <div style={S.detail}>
+            <div>ИНН: {se.inn}</div>
+            <div>Плательщик НПД (самозанятый)</div>
+            <div>{se.phone}</div>
           </div>
         </div>
-
-        {/* Deal reference */}
-        {deal && (
-          <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <span style={{ color: '#ca8a04' }}>📋</span>
-            <span style={{ color: '#92400e' }}>Основание: </span>
-            <span style={{ fontWeight: 600, color: '#1a1a2e' }}>{deal}</span>
-          </div>
-        )}
-
-        {/* Items table */}
-        <div style={{ marginBottom: 32 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)' }}>
-                <th style={{ padding: '12px 16px', textAlign: 'left', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', borderRadius: '8px 0 0 8px' }}>Наименование</th>
-                <th style={{ padding: '12px 16px', textAlign: 'center', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', width: 70 }}>Кол.</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', width: 130 }}>Цена</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', borderRadius: '0 8px 8px 0', width: 140 }}>Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoice.items.map((item, i) => (
-                <tr key={item.id} style={{ background: i % 2 === 0 ? '#fafafa' : '#fff', borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 500, color: '#1a1a2e' }}>{item.name}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, color: '#64748b' }}>{item.qty}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 13, color: '#64748b' }}>{item.price.toLocaleString('ru-RU')} ₽</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{(item.qty * item.price).toLocaleString('ru-RU')} ₽</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Total */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <div style={{ background: 'linear-gradient(135deg, #4338ca, #6366f1)', borderRadius: 12, padding: '16px 28px', minWidth: 220, textAlign: 'right' }}>
-              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Итого к оплате</div>
-              <div style={{ color: '#fff', fontSize: 28, fontWeight: 800 }}>{total.toLocaleString('ru-RU')} ₽</div>
-              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>НДС не облагается</div>
-            </div>
+        <div style={{ width: 1, background: '#ddd', alignSelf: 'stretch', margin: '0 8px' }} />
+        <div style={S.block}>
+          <div style={S.label}>Заказчик</div>
+          <div style={S.name}>{client?.name}</div>
+          <div style={S.detail}>
+            <div>{client?.company}</div>
+            {client?.inn && <div>ИНН: {client.inn}</div>}
+            {client?.phone && <div>{client.phone}</div>}
+            {client?.email && <div>{client.email}</div>}
           </div>
         </div>
+      </div>
 
-        {/* Bank */}
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 32 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 14 }}>Банковские реквизиты</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px' }}>
-            {[['Банк', se.bankName], ['БИК', se.bik], ['Р/счёт', se.account], ['К/счёт', se.corrAccount]].map(([label, value]) => (
-              <div key={label} style={{ display: 'flex', gap: 8, fontSize: 12 }}>
-                <span style={{ color: '#94a3b8', minWidth: 60 }}>{label}:</span>
-                <span style={{ fontWeight: 600, color: '#1e293b' }}>{value}</span>
-              </div>
-            ))}
+      <div style={S.divider} />
+
+      {/* Basis */}
+      {deal && (
+        <div style={{ marginBottom: 16, fontSize: 12 }}>
+          <span style={{ fontWeight: 700 }}>Основание: </span>{deal}
+        </div>
+      )}
+
+      {/* Table */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000', marginBottom: 0 }}>
+        <thead>
+          <tr>
+            <th style={{ ...S.th, width: 32 }}>№</th>
+            <th style={S.th}>Наименование услуг / работ</th>
+            <th style={{ ...S.thR, width: 52 }}>Кол.</th>
+            <th style={{ ...S.thR, width: 56 }}>Ед.</th>
+            <th style={{ ...S.thR, width: 110 }}>Цена, ₽</th>
+            <th style={{ ...S.thR, width: 120, borderRight: 'none' }}>Сумма, ₽</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoice.items.map((item, i) => (
+            <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+              <td style={{ ...S.td, textAlign: 'center', color: '#777' }}>{i + 1}</td>
+              <td style={S.td}>{item.name}</td>
+              <td style={S.tdR}>{item.qty}</td>
+              <td style={{ ...S.tdR, color: '#555' }}>шт.</td>
+              <td style={S.tdR}>{item.price.toLocaleString('ru-RU')}</td>
+              <td style={{ ...S.tdR, fontWeight: 600 }}>{(item.qty * item.price).toLocaleString('ru-RU')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Total block */}
+      <div style={{ border: '1px solid #000', borderTop: 'none', padding: '0' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', borderBottom: '1px solid #ddd' }}>
+          <div style={{ padding: '7px 10px', fontSize: 11, color: '#555', borderRight: '1px solid #ddd', minWidth: 200, textAlign: 'right' }}>Итого без налога (НДС):</div>
+          <div style={{ padding: '7px 10px', fontSize: 11, minWidth: 120, textAlign: 'right' }}>—</div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', borderBottom: '1px solid #ddd' }}>
+          <div style={{ padding: '7px 10px', fontSize: 11, color: '#555', borderRight: '1px solid #ddd', minWidth: 200, textAlign: 'right' }}>НДС:</div>
+          <div style={{ padding: '7px 10px', fontSize: 11, minWidth: 120, textAlign: 'right' }}>Не облагается</div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', background: '#f5f5f5' }}>
+          <div style={{ padding: '10px 10px', fontSize: 13, fontWeight: 700, borderRight: '1px solid #ddd', minWidth: 200, textAlign: 'right' }}>ИТОГО К ОПЛАТЕ:</div>
+          <div style={{ padding: '10px 10px', fontSize: 14, fontWeight: 700, minWidth: 120, textAlign: 'right' }}>{total.toLocaleString('ru-RU')} ₽</div>
+        </div>
+      </div>
+
+      {/* Amount in words */}
+      <div style={{ marginTop: 10, fontSize: 11, color: '#333' }}>
+        Всего наименований {invoice.items.length}, на сумму <b>{total.toLocaleString('ru-RU')} руб.</b>
+        &nbsp;НДС не облагается (применяется специальный налоговый режим «Налог на профессиональный доход»).
+      </div>
+
+      <div style={S.divider} />
+
+      {/* Bank */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={S.label}>Банковские реквизиты</div>
+        <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'auto 1fr auto 1fr', gap: '5px 20px', fontSize: 12 }}>
+          {[['Банк', se.bankName], ['БИК', se.bik], ['Расч. счёт', se.account], ['Корр. счёт', se.corrAccount]].map(([l, v]) => (
+            <React.Fragment key={l}>
+              <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{l}:</span>
+              <span style={{ fontWeight: 600 }}>{v}</span>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      {/* Signature */}
+      <div style={S.thinDivider} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 16 }}>
+        <div>
+          <div style={{ color: '#555', marginBottom: 24 }}>Исполнитель</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+            <div style={{ borderBottom: '1px solid #000', width: 180 }} />
+            <span style={{ fontSize: 11, color: '#555' }}>/ {se.fullName.split(' ').map((w, i) => i === 0 ? w : w[0] + '.').join(' ')} /</span>
           </div>
         </div>
-
-        {/* Footer note */}
-        <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
-          Счёт действителен до {new Date(invoice.dueDate).toLocaleDateString('ru-RU')} · Оплата по реквизитам выше
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: '#555', marginBottom: 24 }}>М.П.</div>
+          <div style={{ width: 72, height: 72, border: '1px dashed #bbb', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: 10, marginLeft: 'auto' }}>Печать</div>
         </div>
       </div>
     </div>
