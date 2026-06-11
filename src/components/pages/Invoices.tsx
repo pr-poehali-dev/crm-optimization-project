@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Icon from '@/components/ui/icon';
-import { INVOICES, CLIENTS, USERS, DEALS, type Invoice, SELF_EMPLOYED_DEFAULT, type SelfEmployedInfo } from '@/data/mock';
+import { CLIENTS, USERS, type Invoice, type InvoiceItem, SELF_EMPLOYED_DEFAULT, type SelfEmployedInfo } from '@/data/mock';
+import { useStore, addInvoice } from '@/data/store';
 
 const statusConfig: Record<string, { label: string; badge: string }> = {
   draft: { label: 'Черновик', badge: 'bg-slate-100 text-slate-600' },
@@ -9,237 +10,170 @@ const statusConfig: Record<string, { label: string; badge: string }> = {
   overdue: { label: 'Просрочен', badge: 'bg-rose-100 text-rose-700' },
 };
 
-function InvoicePreview({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
-  const client = CLIENTS.find(c => c.id === invoice.clientId);
-  const deal = DEALS.find(d => d.id === invoice.dealId);
+// ── Beautiful invoice template for print/PDF ─────────────────────────────────
+function InvoiceTemplate({ invoice, client, deal }: { invoice: Invoice; client: ReturnType<typeof CLIENTS.find>; deal: string }) {
   const se = invoice.selfEmployed;
   const total = invoice.items.reduce((s, i) => s + i.qty * i.price, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-scale-in overflow-hidden" onClick={e => e.stopPropagation()}>
-        {/* Invoice header */}
-        <div className="px-8 py-6 flex items-start justify-between"
-          style={{ background: 'hsl(220 25% 10%)' }}>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'hsl(244 80% 60%)' }}>
-                <Icon name="Zap" size={14} className="text-white" />
-              </div>
-              <span className="text-white font-bold text-sm">CRM Pro</span>
-            </div>
-            <p className="text-white/50 text-xs mt-2">Счёт на оплату</p>
-            <p className="text-white font-bold text-2xl mt-0.5">№ {invoice.number}</p>
+    <div id="invoice-print" style={{ fontFamily: "'Golos Text', sans-serif", background: '#fff', width: '100%', minHeight: '297mm', padding: '0', color: '#1a1a2e' }}>
+      {/* Header stripe */}
+      <div style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4338ca 100%)', padding: '40px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: '#fff' }}>⚡</div>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>CRM Pro</span>
           </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors mt-1">
-            <Icon name="X" size={20} />
-          </button>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>Счёт на оплату</div>
+          <div style={{ color: '#fff', fontSize: 32, fontWeight: 800 }}>№ {invoice.number}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 4 }}>Дата выставления</div>
+          <div style={{ color: '#fff', fontWeight: 600, fontSize: 15 }}>{new Date(invoice.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+          <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '4px 12px', color: '#fff', fontSize: 12 }}>Оплатить до: {new Date(invoice.dueDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        </div>
+      </div>
+
+      <div style={{ padding: '40px 48px', space: 24 }}>
+        {/* Parties */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 36 }}>
+          <div style={{ background: '#f8f7ff', borderRadius: 12, padding: '20px 24px', borderLeft: '4px solid #4338ca' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Исполнитель</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1a2e', marginBottom: 8 }}>{se.fullName}</div>
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+              <div>ИНН: {se.inn}</div>
+              <div>Самозанятый</div>
+              <div>{se.phone}</div>
+            </div>
+          </div>
+          <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '20px 24px', borderLeft: '4px solid #22c55e' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Заказчик</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1a2e', marginBottom: 8 }}>{client?.name}</div>
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+              <div>{client?.company}</div>
+              {client?.inn && <div>ИНН: {client.inn}</div>}
+              <div>{client?.email}</div>
+              <div>{client?.phone}</div>
+            </div>
+          </div>
         </div>
 
-        <div className="px-8 py-6 space-y-5 max-h-[70vh] overflow-y-auto">
-          {/* Parties */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl bg-secondary/50">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Исполнитель</p>
-              <p className="font-bold text-foreground text-sm">{se.fullName}</p>
-              <p className="text-xs text-muted-foreground mt-1">ИНН: {se.inn}</p>
-              <p className="text-xs text-muted-foreground">Самозанятый</p>
-              <p className="text-xs text-muted-foreground mt-1">{se.phone}</p>
-            </div>
-            <div className="p-4 rounded-xl bg-secondary/50">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Заказчик</p>
-              <p className="font-bold text-foreground text-sm">{client?.name}</p>
-              <p className="text-xs text-muted-foreground mt-1">{client?.company}</p>
-              {client?.inn && <p className="text-xs text-muted-foreground">ИНН: {client.inn}</p>}
-              <p className="text-xs text-muted-foreground">{client?.email}</p>
-            </div>
+        {/* Deal reference */}
+        {deal && (
+          <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 10, padding: '10px 16px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ color: '#ca8a04' }}>📋</span>
+            <span style={{ color: '#92400e' }}>Основание: </span>
+            <span style={{ fontWeight: 600, color: '#1a1a2e' }}>{deal}</span>
           </div>
+        )}
 
-          {/* Deal */}
-          {deal && (
-            <div className="p-3 rounded-xl border border-border/60 flex items-center gap-2 text-sm">
-              <Icon name="Handshake" size={15} className="text-muted-foreground" />
-              <span className="text-muted-foreground">Сделка:</span>
-              <span className="font-medium text-foreground">{deal.title}</span>
-            </div>
-          )}
-
-          {/* Items */}
-          <div className="rounded-xl overflow-hidden border border-border/60">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-secondary/60">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Услуга / Товар</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-muted-foreground">Кол-во</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-muted-foreground">Цена</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-muted-foreground">Сумма</th>
+        {/* Items table */}
+        <div style={{ marginBottom: 32 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)' }}>
+                <th style={{ padding: '12px 16px', textAlign: 'left', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', borderRadius: '8px 0 0 8px' }}>Наименование</th>
+                <th style={{ padding: '12px 16px', textAlign: 'center', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', width: 70 }}>Кол.</th>
+                <th style={{ padding: '12px 16px', textAlign: 'right', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', width: 130 }}>Цена</th>
+                <th style={{ padding: '12px 16px', textAlign: 'right', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', borderRadius: '0 8px 8px 0', width: 140 }}>Сумма</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoice.items.map((item, i) => (
+                <tr key={item.id} style={{ background: i % 2 === 0 ? '#fafafa' : '#fff', borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 500, color: '#1a1a2e' }}>{item.name}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, color: '#64748b' }}>{item.qty}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 13, color: '#64748b' }}>{item.price.toLocaleString('ru-RU')} ₽</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{(item.qty * item.price).toLocaleString('ru-RU')} ₽</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {invoice.items.map(item => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3 font-medium text-foreground">{item.name}</td>
-                    <td className="px-4 py-3 text-center text-muted-foreground">{item.qty}</td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">{item.price.toLocaleString('ru-RU')} ₽</td>
-                    <td className="px-4 py-3 text-right font-semibold text-foreground">{(item.qty * item.price).toLocaleString('ru-RU')} ₽</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-secondary/40">
-                  <td colSpan={3} className="px-4 py-3 text-right font-bold text-foreground">Итого:</td>
-                  <td className="px-4 py-3 text-right font-bold text-foreground text-base">{total.toLocaleString('ru-RU')} ₽</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {/* Bank */}
-          <div className="p-4 rounded-xl bg-secondary/50">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Банковские реквизиты</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-              {[
-                ['Банк', se.bankName], ['БИК', se.bik],
-                ['Р/счёт', se.account], ['К/счёт', se.corrAccount],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-start gap-2">
-                  <span className="text-muted-foreground w-14 flex-shrink-0">{label}:</span>
-                  <span className="font-medium text-foreground">{value}</span>
-                </div>
               ))}
+            </tbody>
+          </table>
+
+          {/* Total */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <div style={{ background: 'linear-gradient(135deg, #4338ca, #6366f1)', borderRadius: 12, padding: '16px 28px', minWidth: 220, textAlign: 'right' }}>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Итого к оплате</div>
+              <div style={{ color: '#fff', fontSize: 28, fontWeight: 800 }}>{total.toLocaleString('ru-RU')} ₽</div>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>НДС не облагается</div>
             </div>
           </div>
+        </div>
 
-          {/* Dates */}
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            <span>Дата выставления: <b className="text-foreground">{new Date(invoice.createdAt).toLocaleDateString('ru-RU')}</b></span>
-            <span>Оплатить до: <b className="text-foreground">{new Date(invoice.dueDate).toLocaleDateString('ru-RU')}</b></span>
+        {/* Bank */}
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '20px 24px', marginBottom: 32 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 14 }}>Банковские реквизиты</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px' }}>
+            {[['Банк', se.bankName], ['БИК', se.bik], ['Р/счёт', se.account], ['К/счёт', se.corrAccount]].map(([label, value]) => (
+              <div key={label} style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+                <span style={{ color: '#94a3b8', minWidth: 60 }}>{label}:</span>
+                <span style={{ fontWeight: 600, color: '#1e293b' }}>{value}</span>
+              </div>
+            ))}
           </div>
+        </div>
 
-          <div className="flex gap-2 pt-2">
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
-              <Icon name="Printer" size={15} />
-              Печать
-            </button>
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
-              <Icon name="Download" size={15} />
-              Скачать PDF
-            </button>
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium hover:opacity-90 transition-all"
-              style={{ background: 'hsl(244 80% 60%)' }}>
-              <Icon name="Send" size={15} />
-              Отправить
-            </button>
-          </div>
+        {/* Footer note */}
+        <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
+          Счёт действителен до {new Date(invoice.dueDate).toLocaleDateString('ru-RU')} · Оплата по реквизитам выше
         </div>
       </div>
     </div>
   );
 }
 
-function NewInvoiceModal({ onClose }: { onClose: () => void }) {
-  const [se, setSe] = useState<SelfEmployedInfo>(SELF_EMPLOYED_DEFAULT);
-  const [items, setItems] = useState([{ id: '1', name: '', qty: 1, price: 0 }]);
-  const [clientId, setClientId] = useState('');
-  const [dealId, setDealId] = useState('');
+// ── Invoice preview modal ────────────────────────────────────────────────────
+function InvoicePreview({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+  const { clients, deals } = useStore();
+  const client = clients.find(c => c.id === invoice.clientId);
+  const deal = deals.find(d => d.id === invoice.dealId);
+  const printRef = useRef<HTMLDivElement>(null);
 
-  const total = items.reduce((s, i) => s + i.qty * i.price, 0);
-
-  const addItem = () => setItems(prev => [...prev, { id: Date.now().toString(), name: '', qty: 1, price: 0 }]);
+  const handlePrint = () => {
+    const content = printRef.current?.innerHTML;
+    if (!content) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`
+      <!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <title>Счёт № ${invoice.number}</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Golos Text',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+        @page{margin:0;size:A4;}
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+      </style>
+      </head><body>${content}</body></html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-scale-in overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-          <h2 className="font-bold text-foreground text-lg">Новый счёт</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <Icon name="X" size={20} />
-          </button>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl animate-scale-in flex flex-col" style={{ maxHeight: '92vh' }} onClick={e => e.stopPropagation()}>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/60 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <Icon name="FileText" size={18} className="text-muted-foreground" />
+            <span className="font-semibold text-foreground">Счёт № {invoice.number}</span>
+            <span className={`status-badge ${statusConfig[invoice.status].badge} ml-1`}>{statusConfig[invoice.status].label}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
+              <Icon name="Printer" size={15} />Печать / PDF
+            </button>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1"><Icon name="X" size={20} /></button>
+          </div>
         </div>
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Клиент</label>
-              <select value={clientId} onChange={e => setClientId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30">
-                <option value="">Выберите клиента</option>
-                {CLIENTS.map(c => <option key={c.id} value={c.id}>{c.name} — {c.company}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Сделка</label>
-              <select value={dealId} onChange={e => setDealId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30">
-                <option value="">Выберите сделку</option>
-                {DEALS.filter(d => !clientId || d.clientId === clientId).map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground block mb-2">Реквизиты самозанятого</label>
-            <div className="grid grid-cols-2 gap-2.5">
-              {[
-                { key: 'fullName', label: 'ФИО' },
-                { key: 'inn', label: 'ИНН' },
-                { key: 'bankName', label: 'Банк' },
-                { key: 'bik', label: 'БИК' },
-                { key: 'account', label: 'Расч. счёт' },
-                { key: 'corrAccount', label: 'Корр. счёт' },
-              ].map(f => (
-                <input key={f.key}
-                  value={se[f.key as keyof SelfEmployedInfo]}
-                  onChange={e => setSe(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  placeholder={f.label}
-                  className="px-3 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-muted-foreground">Позиции</label>
-              <button onClick={addItem} className="text-xs text-primary font-semibold flex items-center gap-1 hover:opacity-75 transition-opacity">
-                <Icon name="Plus" size={13} />
-                Добавить
-              </button>
-            </div>
-            <div className="space-y-2">
-              {items.map((item, idx) => (
-                <div key={item.id} className="flex gap-2">
-                  <input placeholder="Название" value={item.name}
-                    onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                    className="flex-1 px-3 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30" />
-                  <input type="number" placeholder="Кол." value={item.qty}
-                    onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qty: +e.target.value } : p))}
-                    className="w-16 px-2.5 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30 text-center" />
-                  <input type="number" placeholder="Цена ₽" value={item.price}
-                    onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, price: +e.target.value } : p))}
-                    className="w-28 px-3 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30" />
-                  {items.length > 1 && (
-                    <button onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-rose-500 transition-colors">
-                      <Icon name="Trash2" size={16} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex justify-end">
-              <span className="text-sm font-bold text-foreground">Итого: {total.toLocaleString('ru-RU')} ₽</span>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
-              Отмена
-            </button>
-            <button className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all"
-              style={{ background: 'hsl(244 80% 60%)' }}>
-              Создать счёт
-            </button>
+        {/* Preview */}
+        <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden" ref={printRef}>
+            <InvoiceTemplate invoice={invoice} client={client} deal={deal?.title || ''} />
           </div>
         </div>
       </div>
@@ -247,113 +181,214 @@ function NewInvoiceModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── Invoice form modal ────────────────────────────────────────────────────────
+export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { onClose: () => void; prefillDealId?: string; prefillClientId?: string }) {
+  const { clients, deals, invoices } = useStore();
+  const [clientId, setClientId] = useState(prefillClientId ?? '');
+  const [dealId, setDealId] = useState(prefillDealId ?? '');
+  const [se, setSe] = useState<SelfEmployedInfo>(SELF_EMPLOYED_DEFAULT);
+  const [items, setItems] = useState<InvoiceItem[]>([{ id: '1', name: '', qty: 1, price: 0 }]);
+  const [dueDate, setDueDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [createdInvoice, setCreatedInvoice] = useState<Invoice | null>(null);
+
+  const total = items.reduce((s, i) => s + i.qty * i.price, 0);
+  const nextNum = String(invoices.length + 1).padStart(3, '0');
+
+  const addItem = () => setItems(p => [...p, { id: `i${Date.now()}`, name: '', qty: 1, price: 0 }]);
+
+  const handleSave = () => {
+    if (!clientId) return;
+    setSaving(true);
+    setTimeout(() => {
+      const inv: Invoice = {
+        id: `inv${Date.now()}`, number: nextNum, clientId, dealId: dealId || '',
+        managerId: USERS[1].id, amount: total, status: 'draft',
+        createdAt: new Date().toISOString().split('T')[0],
+        dueDate: dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+        items, selfEmployed: se,
+      };
+      addInvoice(inv);
+      setSaving(false); setSaved(true);
+      setCreatedInvoice(inv);
+    }, 500);
+  };
+
+  if (createdInvoice) {
+    return <InvoicePreview invoice={createdInvoice} onClose={onClose} />;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-scale-in flex flex-col" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-5 pb-4 border-b border-border/60 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'hsl(244 80% 60%)' }}><Icon name="Receipt" size={16} className="text-white" /></div>
+            <h2 className="font-bold text-foreground text-lg">Выставить счёт</h2>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><Icon name="X" size={20} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Client & Deal */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="field-label">Клиент *</label>
+              <select value={clientId} onChange={e => setClientId(e.target.value)} className="crm-input">
+                <option value="">— Выберите клиента —</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name} · {c.company}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">Сделка</label>
+              <select value={dealId} onChange={e => setDealId(e.target.value)} className="crm-input">
+                <option value="">— Без сделки —</option>
+                {deals.filter(d => !clientId || d.clientId === clientId).map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div><label className="field-label">Срок оплаты</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="crm-input" /></div>
+
+          {/* Requisites */}
+          <div>
+            <div className="flex items-center gap-2 mb-3"><div className="w-1 h-4 rounded-full" style={{ background: 'hsl(244 80% 60%)' }} /><span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Реквизиты самозанятого</span></div>
+            <div className="grid grid-cols-2 gap-2">
+              {[['fullName', 'ФИО'], ['inn', 'ИНН'], ['bankName', 'Банк'], ['bik', 'БИК'], ['account', 'Расчётный счёт'], ['corrAccount', 'Корр. счёт']].map(([k, l]) => (
+                <input key={k} value={se[k as keyof SelfEmployedInfo]} onChange={e => setSe(p => ({ ...p, [k]: e.target.value }))} placeholder={l} className="crm-input" />
+              ))}
+            </div>
+          </div>
+
+          {/* Items */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2"><div className="w-1 h-4 rounded-full" style={{ background: 'hsl(38 95% 55%)' }} /><span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Позиции</span></div>
+              <button onClick={addItem} className="text-xs text-primary font-semibold flex items-center gap-1 hover:opacity-75"><Icon name="Plus" size={13} />Добавить</button>
+            </div>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={item.id} className="flex gap-2 items-center">
+                  <input placeholder="Название" value={item.name} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} className="crm-input flex-1" />
+                  <input type="number" placeholder="Кол." value={item.qty} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, qty: +e.target.value } : x))} className="crm-input text-center" style={{ width: 64 }} />
+                  <input type="number" placeholder="Цена ₽" value={item.price || ''} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, price: +e.target.value } : x))} className="crm-input" style={{ width: 110 }} />
+                  {items.length > 1 && <button onClick={() => setItems(p => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-rose-500 transition-colors flex-shrink-0"><Icon name="Trash2" size={16} /></button>}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end mt-3 pt-3 border-t border-border/60">
+              <span className="text-base font-bold text-foreground">Итого: {total.toLocaleString('ru-RU')} ₽</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 pb-5 pt-3 border-t border-border/60 flex gap-2 flex-shrink-0">
+          <button onClick={onClose} className="px-5 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">Отмена</button>
+          <button onClick={handleSave} disabled={!clientId || saving || saved} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'hsl(244 80% 60%)' }}>
+            {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Создаём...</> : <><Icon name="FileText" size={15} />Создать и просмотреть</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 export default function Invoices() {
+  const { invoices, clients, deals } = useStore();
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const filtered = INVOICES.filter(inv => {
-    const client = CLIENTS.find(c => c.id === inv.clientId);
-    const matchSearch = client?.name.toLowerCase().includes(search.toLowerCase()) ||
-      inv.number.includes(search);
+  const filtered = invoices.filter(inv => {
+    const client = clients.find(c => c.id === inv.clientId);
+    const matchSearch = client?.name.toLowerCase().includes(search.toLowerCase()) || inv.number.includes(search);
     const matchStatus = statusFilter === 'all' || inv.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
-  const totalPaid = INVOICES.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
-  const totalPending = INVOICES.filter(i => i.status === 'sent').reduce((s, i) => s + i.amount, 0);
-  const totalOverdue = INVOICES.filter(i => i.status === 'overdue').reduce((s, i) => s + i.amount, 0);
+  const totalPaid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
+  const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.amount, 0);
+  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.amount, 0);
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Счета</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">{INVOICES.length} счётов</p>
-        </div>
-        <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all"
-          style={{ background: 'hsl(244 80% 60%)' }}>
-          <Icon name="Plus" size={16} />
-          Новый счёт
-        </button>
-      </div>
+    <>
+      <style>{`
+        .field-label{display:block;font-size:0.7rem;font-weight:600;color:hsl(var(--muted-foreground));text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.3rem;}
+        .crm-input{width:100%;padding:0.55rem 0.75rem;border-radius:0.75rem;border:1.5px solid hsl(var(--border));font-size:0.875rem;outline:none;transition:all 0.15s;background:white;color:hsl(var(--foreground));font-family:inherit;}
+        .crm-input:focus{border-color:hsl(244 80% 60%);box-shadow:0 0 0 3px hsl(244 80% 60% / 0.12);}
+        select.crm-input{cursor:pointer;}
+      `}</style>
 
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Оплачено', value: totalPaid, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: 'CheckCircle' },
-          { label: 'Ожидается', value: totalPending, color: 'text-blue-600', bg: 'bg-blue-50', icon: 'Clock' },
-          { label: 'Просрочено', value: totalOverdue, color: 'text-rose-600', bg: 'bg-rose-50', icon: 'AlertCircle' },
-        ].map(m => (
-          <div key={m.label} className="metric-card">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl ${m.bg} flex items-center justify-center`}>
-                <Icon name={m.icon} size={20} className={m.color} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{m.label}</p>
-                <p className="text-lg font-bold text-foreground">{(m.value / 1000).toFixed(0)} тыс ₽</p>
+      <div className="p-6 space-y-5 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Счета</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">{invoices.length} счётов</p>
+          </div>
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all" style={{ background: 'hsl(244 80% 60%)', boxShadow: '0 4px 14px hsl(244 80% 60% / 0.3)' }}>
+            <Icon name="Plus" size={16} />Новый счёт
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            { label: 'Оплачено', value: totalPaid, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: 'CheckCircle' },
+            { label: 'Ожидается', value: totalPending, color: 'text-blue-600', bg: 'bg-blue-50', icon: 'Clock' },
+            { label: 'Просрочено', value: totalOverdue, color: 'text-rose-600', bg: 'bg-rose-50', icon: 'AlertCircle' },
+          ].map(m => (
+            <div key={m.label} className="metric-card">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl ${m.bg} flex items-center justify-center`}><Icon name={m.icon} size={20} className={m.color} /></div>
+                <div><p className="text-xs text-muted-foreground">{m.label}</p><p className="text-lg font-bold text-foreground">{(m.value / 1000).toFixed(0)} тыс ₽</p></div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-xl border border-border shadow-sm flex-1 min-w-48">
-          <Icon name="Search" size={16} className="text-muted-foreground" />
-          <input className="flex-1 text-sm outline-none bg-transparent placeholder:text-muted-foreground"
-            placeholder="Поиск по номеру, клиенту..."
-            value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <div className="flex gap-1.5 bg-white rounded-xl border border-border shadow-sm p-1">
-          {[['all', 'Все'], ['draft', 'Черновики'], ['sent', 'Отправлены'], ['paid', 'Оплачены'], ['overdue', 'Просрочены']].map(([val, label]) => (
-            <button key={val} onClick={() => setStatusFilter(val)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${statusFilter === val ? 'text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              style={statusFilter === val ? { background: 'hsl(244 80% 60%)' } : {}}>
-              {label}
-            </button>
           ))}
         </div>
-      </div>
 
-      <div className="bg-white rounded-2xl border border-border/50 shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border/50">
-              {['Номер', 'Клиент', 'Сделка', 'Сумма', 'Статус', 'Срок', ''].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/40">
-            {filtered.map(inv => {
-              const client = CLIENTS.find(c => c.id === inv.clientId);
-              const deal = DEALS.find(d => d.id === inv.dealId);
-              return (
-                <tr key={inv.id} className="hover:bg-secondary/30 transition-colors cursor-pointer group" onClick={() => setSelected(inv)}>
-                  <td className="px-4 py-3.5">
-                    <span className="text-sm font-bold text-foreground">№ {inv.number}</span>
-                  </td>
-                  <td className="px-4 py-3.5 text-sm text-foreground">{client?.name}</td>
-                  <td className="px-4 py-3.5 text-sm text-muted-foreground truncate max-w-40">{deal?.title}</td>
-                  <td className="px-4 py-3.5 text-sm font-bold text-foreground">{inv.amount.toLocaleString('ru-RU')} ₽</td>
-                  <td className="px-4 py-3.5">
-                    <span className={`status-badge ${statusConfig[inv.status].badge}`}>{statusConfig[inv.status].label}</span>
-                  </td>
-                  <td className="px-4 py-3.5 text-sm text-muted-foreground">{new Date(inv.dueDate).toLocaleDateString('ru-RU')}</td>
-                  <td className="px-4 py-3.5">
-                    <Icon name="Eye" size={15} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="flex gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-xl border border-border shadow-sm flex-1 min-w-48">
+            <Icon name="Search" size={16} className="text-muted-foreground" />
+            <input className="flex-1 text-sm outline-none bg-transparent placeholder:text-muted-foreground" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex gap-1.5 bg-white rounded-xl border border-border shadow-sm p-1">
+            {[['all', 'Все'], ['draft', 'Черновики'], ['sent', 'Отправлены'], ['paid', 'Оплачены'], ['overdue', 'Просрочены']].map(([val, label]) => (
+              <button key={val} onClick={() => setStatusFilter(val)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${statusFilter === val ? 'text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} style={statusFilter === val ? { background: 'hsl(244 80% 60%)' } : {}}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead><tr className="border-b border-border/50">{['Номер', 'Клиент', 'Сделка', 'Сумма', 'Статус', 'Срок', ''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-border/40">
+              {filtered.map(inv => {
+                const client = clients.find(c => c.id === inv.clientId);
+                const deal = deals.find(d => d.id === inv.dealId);
+                return (
+                  <tr key={inv.id} className="hover:bg-secondary/30 transition-colors cursor-pointer group" onClick={() => setSelected(inv)}>
+                    <td className="px-4 py-3.5 text-sm font-bold text-foreground">№ {inv.number}</td>
+                    <td className="px-4 py-3.5 text-sm text-foreground">{client?.name}</td>
+                    <td className="px-4 py-3.5 text-sm text-muted-foreground truncate max-w-40">{deal?.title || '—'}</td>
+                    <td className="px-4 py-3.5 text-sm font-bold text-foreground">{inv.amount.toLocaleString('ru-RU')} ₽</td>
+                    <td className="px-4 py-3.5"><span className={`status-badge ${statusConfig[inv.status].badge}`}>{statusConfig[inv.status].label}</span></td>
+                    <td className="px-4 py-3.5 text-sm text-muted-foreground">{new Date(inv.dueDate).toLocaleDateString('ru-RU')}</td>
+                    <td className="px-4 py-3.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Icon name="Eye" size={15} className="text-muted-foreground" />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {selected && <InvoicePreview invoice={selected} onClose={() => setSelected(null)} />}
-      {showNew && <NewInvoiceModal onClose={() => setShowNew(false)} />}
-    </div>
+      {showNew && <InvoiceFormModal onClose={() => setShowNew(false)} />}
+    </>
   );
 }

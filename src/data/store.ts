@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react';
-import { CLIENTS, DEALS, TASKS, type Client, type Deal, type Task } from './mock';
+import { CLIENTS, DEALS, TASKS, INVOICES, type Client, type Deal, type Task, type Invoice } from './mock';
 
-// Simple in-memory reactive store
+export interface Comment {
+  id: string;
+  entityId: string; // dealId or taskId
+  text: string;
+  authorId: string;
+  createdAt: string;
+}
+
 let clients = [...CLIENTS];
 let deals = [...DEALS];
 let tasks = [...TASKS];
+let invoices = [...INVOICES];
+let comments: Comment[] = [];
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
-function notify() {
-  listeners.forEach(l => l());
-}
+function notify() { listeners.forEach(l => l()); }
 
 export function subscribe(fn: Listener) {
   listeners.add(fn);
@@ -21,19 +28,16 @@ export function subscribe(fn: Listener) {
 export function getClients() { return clients; }
 export function getDeals() { return deals; }
 export function getTasks() { return tasks; }
+export function getInvoices() { return invoices; }
+export function getComments() { return comments; }
 
-export function addClient(client: Client) {
-  clients = [client, ...clients];
-  notify();
-}
+export function addClient(c: Client) { clients = [c, ...clients]; notify(); }
+export function addDeal(d: Deal) { deals = [d, ...deals]; notify(); }
+export function addTask(t: Task) { tasks = [t, ...tasks]; notify(); }
+export function addInvoice(inv: Invoice) { invoices = [inv, ...invoices]; notify(); }
 
-export function addDeal(deal: Deal) {
-  deals = [deal, ...deals];
-  notify();
-}
-
-export function addTask(task: Task) {
-  tasks = [task, ...tasks];
+export function addComment(entityId: string, text: string, authorId: string) {
+  comments = [...comments, { id: `cmt${Date.now()}`, entityId, text, authorId, createdAt: new Date().toISOString() }];
   notify();
 }
 
@@ -42,7 +46,11 @@ export function updateDealStage(dealId: string, stage: Deal['stage']) {
   notify();
 }
 
-// React hook to subscribe to store
+export function updateTaskStatus(taskId: string, status: Task['status']) {
+  tasks = tasks.map(t => t.id === taskId ? { ...t, status } : t);
+  notify();
+}
+
 export function useStore() {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -53,5 +61,7 @@ export function useStore() {
     clients: getClients(),
     deals: getDeals(),
     tasks: getTasks(),
+    invoices: getInvoices(),
+    comments: getComments(),
   };
 }

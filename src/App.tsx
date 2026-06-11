@@ -7,7 +7,7 @@ import Dashboard from '@/components/pages/Dashboard';
 import Clients from '@/components/pages/Clients';
 import Deals from '@/components/pages/Deals';
 import Tasks from '@/components/pages/Tasks';
-import Invoices from '@/components/pages/Invoices';
+import Invoices, { InvoiceFormModal } from '@/components/pages/Invoices';
 import Analytics from '@/components/pages/Analytics';
 import Roles from '@/components/pages/Roles';
 import { type User } from '@/data/mock';
@@ -25,23 +25,31 @@ const pageTitles: Record<Page, string> = {
   roles: 'Роли и права',
 };
 
-function PageContent({ page, user }: { page: Page; user: User }) {
-  if (page === 'clients') return <Clients />;
-  if (page === 'deals' && ['admin', 'sales'].includes(user.role)) return <Deals />;
-  if (page === 'tasks') return <Tasks />;
-  if (page === 'invoices' && ['admin', 'sales'].includes(user.role)) return <Invoices />;
-  if (page === 'analytics' && ['admin', 'sales'].includes(user.role)) return <Analytics />;
-  if (page === 'roles' && user.role === 'admin') return <Roles />;
-  return <Dashboard />;
-}
-
 function CRMApp() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
+  const [invoiceModal, setInvoiceModal] = useState<{ dealId?: string; clientId?: string } | null>(null);
+
+  const openInvoice = (dealId: string, clientId: string) => {
+    setInvoiceModal({ dealId, clientId });
+  };
 
   if (!currentUser) {
     return <LoginPage onLogin={user => setCurrentUser(user)} />;
   }
+
+  const renderPage = () => {
+    if (page === 'clients') return <Clients />;
+    if (page === 'deals' && ['admin', 'sales'].includes(currentUser.role))
+      return <Deals onOpenInvoice={openInvoice} />;
+    if (page === 'tasks') return <Tasks />;
+    if (page === 'invoices' && ['admin', 'sales'].includes(currentUser.role))
+      return <Invoices />;
+    if (page === 'analytics' && ['admin', 'sales'].includes(currentUser.role))
+      return <Analytics />;
+    if (page === 'roles' && currentUser.role === 'admin') return <Roles />;
+    return <Dashboard />;
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -71,9 +79,17 @@ function CRMApp() {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <PageContent page={page} user={currentUser} />
+          {renderPage()}
         </main>
       </div>
+
+      {invoiceModal && (
+        <InvoiceFormModal
+          prefillDealId={invoiceModal.dealId}
+          prefillClientId={invoiceModal.clientId}
+          onClose={() => setInvoiceModal(null)}
+        />
+      )}
     </div>
   );
 }
