@@ -41,7 +41,7 @@ export default function Sidebar({ currentPage, onNavigate, currentUser }: Sideba
           <Icon name="Zap" size={18} className="text-white" />
         </div>
         {!collapsed && (
-          <span className="text-white font-bold text-base tracking-tight">CRM Pro</span>
+          <span className="text-white font-bold text-base tracking-tight">1C Matrix</span>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}

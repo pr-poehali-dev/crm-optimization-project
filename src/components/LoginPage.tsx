@@ -40,7 +40,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             style={{ background: 'hsl(244 80% 60%)', boxShadow: '0 8px 32px hsl(244 80% 60% / 0.4)' }}>
             <Icon name="Zap" size={28} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">CRM Pro</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">1C Matrix</h1>
           <p className="text-white/40 text-sm mt-1">Система управления продажами</p>
         </div>
 
