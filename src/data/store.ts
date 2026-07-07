@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CLIENTS, DEALS, TASKS, INVOICES, type Client, type Deal, type Task, type Invoice } from './mock';
+import { CLIENTS, DEALS, TASKS, INVOICES, USERS, NOMENCLATURE, SELF_EMPLOYED_DEFAULT, type Client, type Deal, type Task, type Invoice, type User, type NomenclatureItem, type SelfEmployedInfo, type Role } from './mock';
 
 export interface Comment {
   id: string;
@@ -14,6 +14,9 @@ let deals = [...DEALS];
 let tasks = [...TASKS];
 let invoices = [...INVOICES];
 let comments: Comment[] = [];
+let users = [...USERS];
+let nomenclature = [...NOMENCLATURE];
+let selfEmployed: SelfEmployedInfo = { ...SELF_EMPLOYED_DEFAULT };
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -22,7 +25,7 @@ function notify() { listeners.forEach(l => l()); }
 
 export function subscribe(fn: Listener) {
   listeners.add(fn);
-  return () => listeners.delete(fn);
+  return () => { listeners.delete(fn); };
 }
 
 export function getClients() { return clients; }
@@ -30,6 +33,9 @@ export function getDeals() { return deals; }
 export function getTasks() { return tasks; }
 export function getInvoices() { return invoices; }
 export function getComments() { return comments; }
+export function getUsers() { return users; }
+export function getNomenclature() { return nomenclature; }
+export function getSelfEmployed() { return selfEmployed; }
 
 export function addClient(c: Client) { clients = [c, ...clients]; notify(); }
 export function addDeal(d: Deal) { deals = [d, ...deals]; notify(); }
@@ -51,6 +57,47 @@ export function updateTaskStatus(taskId: string, status: Task['status']) {
   notify();
 }
 
+export function inviteUser(data: { name: string; email: string; role: Role; phone?: string }) {
+  const user: User = {
+    id: `u${Date.now()}`,
+    name: data.name,
+    email: data.email,
+    role: data.role,
+    avatar: data.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+    phone: data.phone,
+    createdAt: new Date().toISOString().split('T')[0],
+    isActive: true,
+  };
+  users = [user, ...users];
+  notify();
+  return user;
+}
+
+export function updateUser(userId: string, patch: Partial<User>) {
+  users = users.map(u => u.id === userId ? { ...u, ...patch } : u);
+  notify();
+}
+
+export function addNomenclatureItem(item: NomenclatureItem) {
+  nomenclature = [item, ...nomenclature];
+  notify();
+}
+
+export function updateNomenclatureItem(id: string, patch: Partial<NomenclatureItem>) {
+  nomenclature = nomenclature.map(n => n.id === id ? { ...n, ...patch } : n);
+  notify();
+}
+
+export function removeNomenclatureItem(id: string) {
+  nomenclature = nomenclature.filter(n => n.id !== id);
+  notify();
+}
+
+export function updateSelfEmployed(info: SelfEmployedInfo) {
+  selfEmployed = { ...info };
+  notify();
+}
+
 export function useStore() {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -63,5 +110,8 @@ export function useStore() {
     tasks: getTasks(),
     invoices: getInvoices(),
     comments: getComments(),
+    users: getUsers(),
+    nomenclature: getNomenclature(),
+    selfEmployed: getSelfEmployed(),
   };
 }

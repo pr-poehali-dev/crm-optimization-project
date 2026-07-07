@@ -3,7 +3,7 @@ import Icon from '@/components/ui/icon';
 import { USERS, ROLE_LABELS } from '@/data/mock';
 import type { Role } from '@/data/mock';
 
-type Page = 'dashboard' | 'clients' | 'deals' | 'tasks' | 'invoices' | 'analytics' | 'roles';
+type Page = 'dashboard' | 'clients' | 'deals' | 'tasks' | 'invoices' | 'analytics' | 'roles' | 'nomenclature';
 
 interface SidebarProps {
   currentPage: Page;
@@ -17,6 +17,7 @@ const navItems: { id: Page; label: string; icon: string; roles: Role[] }[] = [
   { id: 'deals', label: 'Сделки', icon: 'Handshake', roles: ['admin', 'sales'] },
   { id: 'tasks', label: 'Задачи', icon: 'CheckSquare', roles: ['admin', 'sales', 'support'] },
   { id: 'invoices', label: 'Счета', icon: 'Receipt', roles: ['admin', 'sales'] },
+  { id: 'nomenclature', label: 'Номенклатура', icon: 'Package', roles: ['admin'] },
   { id: 'analytics', label: 'Аналитика', icon: 'BarChart3', roles: ['admin', 'sales'] },
   { id: 'roles', label: 'Роли и права', icon: 'Shield', roles: ['admin'] },
 ];

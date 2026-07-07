@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/icon';
-import { USERS, ROLE_LABELS, ROLE_PERMISSIONS, type Role, type User } from '@/data/mock';
+import { ROLE_LABELS, ROLE_PERMISSIONS, type Role, type User, type SelfEmployedInfo } from '@/data/mock';
+import { useStore, inviteUser, updateUser, updateSelfEmployed } from '@/data/store';
 
 const roleColors: Record<Role, { badge: string; dot: string; accent: string }> = {
   admin: { badge: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500', accent: 'hsl(244 80% 60%)' },
@@ -11,8 +12,12 @@ const roleColors: Record<Role, { badge: string; dot: string; accent: string }> =
 function UserModal({ user, onClose }: { user: User; onClose: () => void }) {
   const [role, setRole] = useState<Role>(user.role);
   const [isActive, setIsActive] = useState(user.isActive);
-
   const roles: Role[] = ['admin', 'sales', 'support'];
+
+  const handleSave = () => {
+    updateUser(user.id, { role, isActive });
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -67,7 +72,7 @@ function UserModal({ user, onClose }: { user: User; onClose: () => void }) {
             Отмена
           </button>
           <button className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all"
-            style={{ background: 'hsl(244 80% 60%)' }} onClick={onClose}>
+            style={{ background: 'hsl(244 80% 60%)' }} onClick={handleSave}>
             Сохранить
           </button>
         </div>
@@ -80,6 +85,16 @@ function InviteModal({ onClose }: { onClose: () => void }) {
   const [role, setRole] = useState<Role>('sales');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [err, setErr] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const handleInvite = () => {
+    if (!name.trim() || !email.trim()) { setErr('Заполните имя и email'); return; }
+    inviteUser({ name, email, role, phone: phone || undefined });
+    setSent(true);
+    setTimeout(onClose, 800);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -94,13 +109,18 @@ function InviteModal({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-3 mb-5">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Имя</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Иван Петров"
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Имя *</label>
+            <input value={name} onChange={e => { setName(e.target.value); setErr(''); }} placeholder="Иван Петров"
               className="w-full px-3.5 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
           <div>
-            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ivan@company.ru"
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Email *</label>
+            <input type="email" value={email} onChange={e => { setEmail(e.target.value); setErr(''); }} placeholder="ivan@company.ru"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">Телефон</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 900 000 00 00"
               className="w-full px-3.5 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
           <div>
@@ -114,6 +134,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </div>
+          {err && <p className="text-xs text-rose-500">{err}</p>}
         </div>
 
         <div className="p-3 rounded-xl bg-secondary/50 mb-5">
@@ -129,10 +150,9 @@ function InviteModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
             Отмена
           </button>
-          <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all"
-            style={{ background: 'hsl(244 80% 60%)' }} onClick={onClose}>
-            <Icon name="Send" size={15} />
-            Отправить приглашение
+          <button onClick={handleInvite} disabled={sent} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-60"
+            style={{ background: sent ? 'hsl(158 64% 45%)' : 'hsl(244 80% 60%)' }}>
+            {sent ? <><Icon name="Check" size={15} />Приглашён!</> : <><Icon name="Send" size={15} />Отправить приглашение</>}
           </button>
         </div>
       </div>
@@ -140,19 +160,62 @@ function InviteModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function SelfEmployedSettings() {
+  const { selfEmployed } = useStore();
+  const [form, setForm] = useState<SelfEmployedInfo>(selfEmployed);
+  const [saved, setSaved] = useState(false);
+
+  const set = (k: keyof SelfEmployedInfo, v: string) => { setForm(p => ({ ...p, [k]: v })); setSaved(false); };
+
+  const handleSave = () => {
+    updateSelfEmployed(form);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-border/50 shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'hsl(244 80% 60%)' }}>
+          <Icon name="Landmark" size={16} className="text-white" />
+        </div>
+        <div>
+          <h3 className="font-bold text-foreground text-sm">Реквизиты для счетов</h3>
+          <p className="text-xs text-muted-foreground">Подтягиваются автоматически во все выставляемые счета</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {([
+          ['fullName', 'ФИО'], ['inn', 'ИНН'], ['phone', 'Телефон'],
+          ['bankName', 'Банк'], ['bik', 'БИК'], ['account', 'Расчётный счёт'], ['corrAccount', 'Корр. счёт'],
+        ] as [keyof SelfEmployedInfo, string][]).map(([k, label]) => (
+          <div key={k}>
+            <label className="text-xs font-semibold text-muted-foreground block mb-1.5">{label}</label>
+            <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-border text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+        ))}
+      </div>
+      <button onClick={handleSave} className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all" style={{ background: saved ? 'hsl(158 64% 45%)' : 'hsl(244 80% 60%)' }}>
+        {saved ? <><Icon name="Check" size={15} />Сохранено</> : <><Icon name="Save" size={15} />Сохранить реквизиты</>}
+      </button>
+    </div>
+  );
+}
+
 export default function Roles() {
+  const { users } = useStore();
   const [selected, setSelected] = useState<User | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
-  const filtered = USERS.filter(u => roleFilter === 'all' || u.role === roleFilter);
+  const filtered = users.filter(u => roleFilter === 'all' || u.role === roleFilter);
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Роли и права</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">{USERS.length} сотрудников · {USERS.filter(u => u.isActive).length} активных</p>
+          <p className="text-muted-foreground text-sm mt-0.5">{users.length} сотрудников · {users.filter(u => u.isActive).length} активных</p>
         </div>
         <button onClick={() => setShowInvite(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-all"
           style={{ background: 'hsl(244 80% 60%)' }}>
@@ -164,7 +227,7 @@ export default function Roles() {
       {/* Role cards */}
       <div className="grid grid-cols-3 gap-4">
         {(['admin', 'sales', 'support'] as Role[]).map(r => {
-          const count = USERS.filter(u => u.role === r).length;
+          const count = users.filter(u => u.role === r).length;
           return (
             <div key={r} className="bg-white rounded-2xl border border-border/50 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-3">
@@ -242,6 +305,8 @@ export default function Roles() {
           </tbody>
         </table>
       </div>
+
+      <SelfEmployedSettings />
 
       {selected && <UserModal user={selected} onClose={() => setSelected(null)} />}
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} />}

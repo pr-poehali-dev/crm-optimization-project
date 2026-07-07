@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 import { USERS, type Deal, type Client, type Task } from '@/data/mock';
 import { useStore, addClient, addDeal, addTask, addComment, updateDealStage } from '@/data/store';
+import CommentsPanel from '@/components/CommentsPanel';
+import { resolveINN } from '@/lib/inn';
 
 const stages = [
   { id: 'new', label: 'Новые', color: 'hsl(214 84% 56%)', badge: 'bg-blue-100 text-blue-700' },
@@ -10,16 +12,6 @@ const stages = [
   { id: 'won', label: 'Выиграны', color: 'hsl(158 64% 45%)', badge: 'bg-emerald-100 text-emerald-700' },
   { id: 'lost', label: 'Проиграны', color: 'hsl(350 80% 58%)', badge: 'bg-rose-100 text-rose-700' },
 ];
-
-const INN_DB: Record<string, string> = {
-  '7701234567': 'ООО «Технологии»', '7707083893': 'ПАО Сбербанк',
-  '7736207543': 'ПАО Газпром', '5010051523': 'ООО «Яндекс»',
-  '7704340310': 'ООО «ВКонтакте»', '771234567890': 'ИП Никитина',
-  '7728168971': 'ООО «МТС»', '9999000001': 'ООО «Рога и Копыта»',
-};
-function resolveINN(inn: string): Promise<string | null> {
-  return new Promise(r => setTimeout(() => r(INN_DB[inn] || null), 500));
-}
 
 const priorityOpts = [
   { id: 'low' as Task['priority'], label: 'Низкий', cls: 'bg-slate-100 text-slate-600' },
@@ -89,11 +81,10 @@ function TaskModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   );
 }
 
-// ── DealModal with comments ──────────────────────────────────────────────────
+// ── DealModal with side comments panel ───────────────────────────────────────
 function DealModal({ deal, onClose, onInvoice }: { deal: Deal; onClose: () => void; onInvoice: (deal: Deal) => void }) {
   const { clients, tasks, comments } = useStore();
   const [showTask, setShowTask] = useState(false);
-  const [commentText, setCommentText] = useState('');
   const client = clients.find(c => c.id === deal.clientId);
   const manager = USERS.find(u => u.id === deal.managerId);
   const stage = stages.find(s => s.id === deal.stage);
@@ -101,17 +92,11 @@ function DealModal({ deal, onClose, onInvoice }: { deal: Deal; onClose: () => vo
   const dealComments = comments.filter(c => c.entityId === deal.id);
   const currentUser = USERS[0];
 
-  const sendComment = () => {
-    if (!commentText.trim()) return;
-    addComment(deal.id, commentText, currentUser.id);
-    setCommentText('');
-  };
-
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
         <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col animate-scale-in" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col animate-scale-in" style={{ height: '640px', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
           <div className="px-6 pt-5 pb-4 border-b border-border/60 flex-shrink-0">
             <div className="flex items-start justify-between">
               <div><h2 className="font-bold text-foreground text-lg pr-4">{deal.title}</h2><p className="text-muted-foreground text-sm mt-0.5">{client?.company || client?.name}</p></div>
@@ -123,73 +108,50 @@ function DealModal({ deal, onClose, onInvoice }: { deal: Deal; onClose: () => vo
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-            <div className="space-y-2">
-              {[
-                { icon: 'User', label: 'Клиент', value: client?.name },
-                { icon: 'Phone', label: 'Телефон', value: client?.phone },
-                { icon: 'Mail', label: 'Email', value: client?.email },
-                { icon: 'UserCircle', label: 'Менеджер', value: manager?.name },
-              ].filter(r => r.value).map(row => (
-                <div key={row.label} className="flex items-center gap-3 p-2.5 rounded-xl bg-secondary/50">
-                  <Icon name={row.icon} size={14} className="text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs text-muted-foreground w-14">{row.label}</span>
-                  <span className="text-sm font-medium text-foreground truncate">{row.value}</span>
-                </div>
-              ))}
-            </div>
-
-            {deal.notes && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-100">
-                <p className="text-xs text-amber-700 font-semibold mb-1">Комментарий к сделке</p>
-                <p className="text-sm text-foreground">{deal.notes}</p>
+          <div className="flex-1 flex min-h-0">
+            {/* Left: info + tasks */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 border-r border-border/60 min-w-0">
+              <div className="space-y-2">
+                {[
+                  { icon: 'User', label: 'Клиент', value: client?.name },
+                  { icon: 'Phone', label: 'Телефон', value: client?.phone },
+                  { icon: 'Mail', label: 'Email', value: client?.email },
+                  { icon: 'UserCircle', label: 'Менеджер', value: manager?.name },
+                ].filter(r => r.value).map(row => (
+                  <div key={row.label} className="flex items-center gap-3 p-2.5 rounded-xl bg-secondary/50">
+                    <Icon name={row.icon} size={14} className="text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs text-muted-foreground w-14">{row.label}</span>
+                    <span className="text-sm font-medium text-foreground truncate">{row.value}</span>
+                  </div>
+                ))}
               </div>
-            )}
 
-            {dealTasks.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Задачи</p>
-                <div className="space-y-1.5">
-                  {dealTasks.map(t => (
-                    <div key={t.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-violet-50 border border-violet-100 text-sm">
-                      <Icon name="CheckSquare" size={13} className="text-violet-500 flex-shrink-0" />
-                      <span className="font-medium text-foreground truncate flex-1">{t.title}</span>
-                      <span className="text-xs text-muted-foreground">{USERS.find(u => u.id === t.assigneeId)?.name.split(' ')[0]}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
-                Комментарии {dealComments.length > 0 && `(${dealComments.length})`}
-              </p>
-              {dealComments.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  {dealComments.map(c => {
-                    const author = USERS.find(u => u.id === c.authorId);
-                    return (
-                      <div key={c.id} className="flex gap-2.5">
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: 'hsl(244 80% 60%)' }}>{author?.avatar.slice(0, 1)}</div>
-                        <div className="flex-1 bg-secondary/60 rounded-xl p-2.5">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-semibold text-foreground">{author?.name.split(' ')[0]}</span>
-                            <span className="text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                          <p className="text-sm text-foreground">{c.text}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
+              {deal.notes && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-100">
+                  <p className="text-xs text-amber-700 font-semibold mb-1">Комментарий к сделке</p>
+                  <p className="text-sm text-foreground">{deal.notes}</p>
                 </div>
               )}
-              <div className="flex gap-2">
-                <input value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendComment()} placeholder="Написать комментарий..." className="crm-input flex-1" />
-                <button onClick={sendComment} disabled={!commentText.trim()} className="px-3 py-2 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 disabled:opacity-30 flex-shrink-0" style={{ background: 'hsl(244 80% 60%)' }}>
-                  <Icon name="Send" size={15} />
-                </button>
-              </div>
+
+              {dealTasks.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Задачи</p>
+                  <div className="space-y-1.5">
+                    {dealTasks.map(t => (
+                      <div key={t.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-violet-50 border border-violet-100 text-sm">
+                        <Icon name="CheckSquare" size={13} className="text-violet-500 flex-shrink-0" />
+                        <span className="font-medium text-foreground truncate flex-1">{t.title}</span>
+                        <span className="text-xs text-muted-foreground">{USERS.find(u => u.id === t.assigneeId)?.name.split(' ')[0]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right: comments panel, fixed size, scrollable */}
+            <div className="w-72 flex-shrink-0 px-4 py-4 min-h-0">
+              <CommentsPanel comments={dealComments} onSend={text => addComment(deal.id, text, currentUser.id)} />
             </div>
           </div>
 
@@ -318,13 +280,20 @@ function NewDealModal({ onClose }: { onClose: () => void }) {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-export default function Deals({ onOpenInvoice }: { onOpenInvoice?: (dealId: string, clientId: string) => void }) {
+export default function Deals({ onOpenInvoice, openDealId, onDealOpened }: { onOpenInvoice?: (dealId: string, clientId: string) => void; openDealId?: string | null; onDealOpened?: () => void }) {
   const { deals, clients } = useStore();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'kanban' | 'list'>('kanban');
   const [selected, setSelected] = useState<Deal | null>(null);
   const [showNew, setShowNew] = useState(false);
   const dragId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (openDealId) {
+      const d = deals.find(d => d.id === openDealId);
+      if (d) { setSelected(d); onDealOpened?.(); }
+    }
+  }, [openDealId]);
 
   const handleDragStart = (e: React.DragEvent, dealId: string) => {
     dragId.current = dealId;
@@ -340,7 +309,13 @@ export default function Deals({ onOpenInvoice }: { onOpenInvoice?: (dealId: stri
 
   const filtered = deals.filter(d => {
     const client = clients.find(c => c.id === d.clientId);
-    return d.title.toLowerCase().includes(search.toLowerCase()) || client?.company.toLowerCase().includes(search.toLowerCase()) || client?.name.toLowerCase().includes(search.toLowerCase()) || false;
+    const q = search.toLowerCase().trim();
+    const qDigits = search.replace(/\D/g, '');
+    if (!q) return true;
+    const matchText = d.title.toLowerCase().includes(q) || client?.company.toLowerCase().includes(q) || client?.name.toLowerCase().includes(q);
+    const matchPhone = qDigits.length > 2 && (client?.phone || '').replace(/\D/g, '').includes(qDigits);
+    const matchInn = qDigits.length > 2 && (client?.inn || '').includes(qDigits);
+    return matchText || matchPhone || matchInn;
   });
 
   return (
@@ -372,9 +347,9 @@ export default function Deals({ onOpenInvoice }: { onOpenInvoice?: (dealId: stri
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-xl border border-border shadow-sm w-full max-w-80">
+        <div className="flex items-center gap-2 px-3.5 py-2.5 bg-white rounded-xl border border-border shadow-sm w-full max-w-md">
           <Icon name="Search" size={16} className="text-muted-foreground" />
-          <input className="flex-1 text-sm outline-none bg-transparent placeholder:text-muted-foreground" placeholder="Поиск сделок..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="flex-1 text-sm outline-none bg-transparent placeholder:text-muted-foreground" placeholder="Поиск по названию, ФИО, телефону, ИНН..." value={search} onChange={e => setSearch(e.target.value)} />
           {search && <button onClick={() => setSearch('')}><Icon name="X" size={14} className="text-muted-foreground" /></button>}
         </div>
 

@@ -10,10 +10,11 @@ import Tasks from '@/components/pages/Tasks';
 import Invoices, { InvoiceFormModal } from '@/components/pages/Invoices';
 import Analytics from '@/components/pages/Analytics';
 import Roles from '@/components/pages/Roles';
+import Nomenclature from '@/components/pages/Nomenclature';
 import { type User } from '@/data/mock';
 import Icon from '@/components/ui/icon';
 
-type Page = 'dashboard' | 'clients' | 'deals' | 'tasks' | 'invoices' | 'analytics' | 'roles';
+type Page = 'dashboard' | 'clients' | 'deals' | 'tasks' | 'invoices' | 'analytics' | 'roles' | 'nomenclature';
 
 const pageTitles: Record<Page, string> = {
   dashboard: 'Главная',
@@ -23,15 +24,22 @@ const pageTitles: Record<Page, string> = {
   invoices: 'Счета',
   analytics: 'Аналитика',
   roles: 'Роли и права',
+  nomenclature: 'Номенклатура',
 };
 
 function CRMApp() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
   const [invoiceModal, setInvoiceModal] = useState<{ dealId?: string; clientId?: string } | null>(null);
+  const [openDealId, setOpenDealId] = useState<string | null>(null);
 
   const openInvoice = (dealId: string, clientId: string) => {
     setInvoiceModal({ dealId, clientId });
+  };
+
+  const openDealFromClient = (dealId: string) => {
+    setOpenDealId(dealId);
+    setPage('deals');
   };
 
   if (!currentUser) {
@@ -39,12 +47,13 @@ function CRMApp() {
   }
 
   const renderPage = () => {
-    if (page === 'clients') return <Clients />;
+    if (page === 'clients') return <Clients onOpenDeal={openDealFromClient} />;
     if (page === 'deals' && ['admin', 'sales'].includes(currentUser.role))
-      return <Deals onOpenInvoice={openInvoice} />;
+      return <Deals onOpenInvoice={openInvoice} openDealId={openDealId} onDealOpened={() => setOpenDealId(null)} />;
     if (page === 'tasks') return <Tasks />;
     if (page === 'invoices' && ['admin', 'sales'].includes(currentUser.role))
       return <Invoices />;
+    if (page === 'nomenclature' && currentUser.role === 'admin') return <Nomenclature />;
     if (page === 'analytics' && ['admin', 'sales'].includes(currentUser.role))
       return <Analytics />;
     if (page === 'roles' && currentUser.role === 'admin') return <Roles />;

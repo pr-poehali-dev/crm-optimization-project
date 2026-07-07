@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import Icon from '@/components/ui/icon';
-import { CLIENTS, USERS, type Invoice, type InvoiceItem, SELF_EMPLOYED_DEFAULT, type SelfEmployedInfo } from '@/data/mock';
+import { CLIENTS, USERS, type Invoice, type InvoiceItem } from '@/data/mock';
 import { useStore, addInvoice } from '@/data/store';
 
 const statusConfig: Record<string, { label: string; badge: string }> = {
@@ -74,6 +74,21 @@ function InvoiceTemplate({ invoice, client, deal }: { invoice: Invoice; client: 
 
       <div style={S.divider} />
 
+      {/* Bank requisites — placed prominently up front so payer can pay right away */}
+      <div style={{ marginBottom: 16, background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 6, padding: '12px 16px' }}>
+        <div style={{ ...S.label, marginBottom: 8 }}>Банковские реквизиты для оплаты</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto 1fr', gap: '5px 20px', fontSize: 12 }}>
+          {[['Банк', se.bankName], ['БИК', se.bik], ['Расч. счёт', se.account], ['Корр. счёт', se.corrAccount]].map(([l, v]) => (
+            <React.Fragment key={l}>
+              <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{l}:</span>
+              <span style={{ fontWeight: 600 }}>{v}</span>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div style={S.thinDivider} />
+
       {/* Basis */}
       {deal && (
         <div style={{ marginBottom: 16, fontSize: 12 }}>
@@ -99,7 +114,7 @@ function InvoiceTemplate({ invoice, client, deal }: { invoice: Invoice; client: 
               <td style={{ ...S.td, textAlign: 'center', color: '#777' }}>{i + 1}</td>
               <td style={S.td}>{item.name}</td>
               <td style={S.tdR}>{item.qty}</td>
-              <td style={{ ...S.tdR, color: '#555' }}>шт.</td>
+              <td style={{ ...S.tdR, color: '#555' }}>{item.unit || 'шт.'}</td>
               <td style={S.tdR}>{item.price.toLocaleString('ru-RU')}</td>
               <td style={{ ...S.tdR, fontWeight: 600 }}>{(item.qty * item.price).toLocaleString('ru-RU')}</td>
             </tr>
@@ -127,21 +142,6 @@ function InvoiceTemplate({ invoice, client, deal }: { invoice: Invoice; client: 
       <div style={{ marginTop: 10, fontSize: 11, color: '#333' }}>
         Всего наименований {invoice.items.length}, на сумму <b>{total.toLocaleString('ru-RU')} руб.</b>
         &nbsp;НДС не облагается (применяется специальный налоговый режим «Налог на профессиональный доход»).
-      </div>
-
-      <div style={S.divider} />
-
-      {/* Bank */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={S.label}>Банковские реквизиты</div>
-        <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'auto 1fr auto 1fr', gap: '5px 20px', fontSize: 12 }}>
-          {[['Банк', se.bankName], ['БИК', se.bik], ['Расч. счёт', se.account], ['Корр. счёт', se.corrAccount]].map(([l, v]) => (
-            <React.Fragment key={l}>
-              <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{l}:</span>
-              <span style={{ fontWeight: 600 }}>{v}</span>
-            </React.Fragment>
-          ))}
-        </div>
       </div>
 
       {/* Signature */}
@@ -222,13 +222,51 @@ function InvoicePreview({ invoice, onClose }: { invoice: Invoice; onClose: () =>
   );
 }
 
+// ── Nomenclature combobox for a line item ────────────────────────────────────
+function NomenclatureCombobox({ value, onChange, onPick }: { value: string; onChange: (name: string) => void; onPick: (name: string, price: number, unit: string) => void }) {
+  const { nomenclature } = useStore();
+  const [open, setOpen] = useState(false);
+
+  const results = value.trim()
+    ? nomenclature.filter(n => n.name.toLowerCase().includes(value.toLowerCase())).slice(0, 6)
+    : nomenclature.slice(0, 6);
+
+  return (
+    <div className="relative flex-1">
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Название позиции (из номенклатуры или вручную)"
+        className="crm-input"
+      />
+      {open && results.length > 0 && (
+        <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+          {results.map(n => (
+            <button
+              key={n.id}
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onPick(n.name, n.price, n.unit); setOpen(false); }}
+              className="w-full text-left px-3 py-2 hover:bg-secondary/60 transition-colors border-b border-border/40 last:border-0 flex items-center justify-between gap-2"
+            >
+              <span className="text-sm text-foreground truncate">{n.name}</span>
+              <span className="text-xs text-muted-foreground flex-shrink-0">{n.price.toLocaleString('ru-RU')} ₽/{n.unit}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Invoice form modal ────────────────────────────────────────────────────────
 export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { onClose: () => void; prefillDealId?: string; prefillClientId?: string }) {
-  const { clients, deals, invoices } = useStore();
+  const { clients, deals, invoices, selfEmployed } = useStore();
   const [clientId, setClientId] = useState(prefillClientId ?? '');
   const [dealId, setDealId] = useState(prefillDealId ?? '');
-  const [se, setSe] = useState<SelfEmployedInfo>(SELF_EMPLOYED_DEFAULT);
-  const [items, setItems] = useState<InvoiceItem[]>([{ id: '1', name: '', qty: 1, price: 0 }]);
+  const [items, setItems] = useState<InvoiceItem[]>([{ id: '1', name: '', qty: 1, price: 0, unit: 'шт.' }]);
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -237,7 +275,7 @@ export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { 
   const total = items.reduce((s, i) => s + i.qty * i.price, 0);
   const nextNum = String(invoices.length + 1).padStart(3, '0');
 
-  const addItem = () => setItems(p => [...p, { id: `i${Date.now()}`, name: '', qty: 1, price: 0 }]);
+  const addItem = () => setItems(p => [...p, { id: `i${Date.now()}`, name: '', qty: 1, price: 0, unit: 'шт.' }]);
 
   const handleSave = () => {
     if (!clientId) return;
@@ -248,7 +286,7 @@ export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { 
         managerId: USERS[1].id, amount: total, status: 'draft',
         createdAt: new Date().toISOString().split('T')[0],
         dueDate: dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-        items, selfEmployed: se,
+        items, selfEmployed,
       };
       addInvoice(inv);
       setSaving(false); setSaved(true);
@@ -293,14 +331,9 @@ export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { 
 
           <div><label className="field-label">Срок оплаты</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="crm-input" /></div>
 
-          {/* Requisites */}
-          <div>
-            <div className="flex items-center gap-2 mb-3"><div className="w-1 h-4 rounded-full" style={{ background: 'hsl(244 80% 60%)' }} /><span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Реквизиты самозанятого</span></div>
-            <div className="grid grid-cols-2 gap-2">
-              {[['fullName', 'ФИО'], ['inn', 'ИНН'], ['bankName', 'Банк'], ['bik', 'БИК'], ['account', 'Расчётный счёт'], ['corrAccount', 'Корр. счёт']].map(([k, l]) => (
-                <input key={k} value={se[k as keyof SelfEmployedInfo]} onChange={e => setSe(p => ({ ...p, [k]: e.target.value }))} placeholder={l} className="crm-input" />
-              ))}
-            </div>
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-secondary/50 text-xs text-muted-foreground">
+            <Icon name="Landmark" size={14} className="flex-shrink-0" />
+            Реквизиты <b className="text-foreground">{selfEmployed.fullName}</b> подставятся в счёт автоматически. Изменить их можно в разделе «Роли и права».
           </div>
 
           {/* Items */}
@@ -312,7 +345,11 @@ export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { 
             <div className="space-y-2">
               {items.map((item, idx) => (
                 <div key={item.id} className="flex gap-2 items-center">
-                  <input placeholder="Название" value={item.name} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} className="crm-input flex-1" />
+                  <NomenclatureCombobox
+                    value={item.name}
+                    onChange={name => setItems(p => p.map((x, i) => i === idx ? { ...x, name } : x))}
+                    onPick={(name, price, unit) => setItems(p => p.map((x, i) => i === idx ? { ...x, name, price, unit } : x))}
+                  />
                   <input type="number" placeholder="Кол." value={item.qty} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, qty: +e.target.value } : x))} className="crm-input text-center" style={{ width: 64 }} />
                   <input type="number" placeholder="Цена ₽" value={item.price || ''} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, price: +e.target.value } : x))} className="crm-input" style={{ width: 110 }} />
                   {items.length > 1 && <button onClick={() => setItems(p => p.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-rose-500 transition-colors flex-shrink-0"><Icon name="Trash2" size={16} /></button>}

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import Icon from '@/components/ui/icon';
 import { USERS, type Task } from '@/data/mock';
 import { useStore, addTask, addComment, updateTaskStatus } from '@/data/store';
+import CommentsPanel from '@/components/CommentsPanel';
 
 const priorityConfig: Record<string, { label: string; badge: string; dot: string }> = {
   high: { label: 'Высокий', badge: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
@@ -23,6 +24,64 @@ const priorityOpts = [
   { id: 'medium' as Task['priority'], label: 'Средний', cls: 'bg-amber-100 text-amber-700' },
   { id: 'high' as Task['priority'], label: 'Высокий', cls: 'bg-rose-100 text-rose-700' },
 ];
+
+// ── Client searchable picker ─────────────────────────────────────────────────
+function ClientPicker({ clientId, onChange }: { clientId: string; onChange: (id: string) => void }) {
+  const { clients } = useStore();
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const selected = clients.find(c => c.id === clientId);
+
+  const results = clients.filter(c => {
+    const q = query.toLowerCase().trim();
+    const qDigits = query.replace(/\D/g, '');
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) ||
+      c.company.toLowerCase().includes(q) ||
+      (qDigits.length > 2 && c.phone.replace(/\D/g, '').includes(qDigits)) ||
+      (qDigits.length > 2 && (c.inn || '').includes(qDigits));
+  }).slice(0, 6);
+
+  if (selected && !open) {
+    return (
+      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/60 text-sm">
+        <Icon name="User" size={14} className="text-muted-foreground flex-shrink-0" />
+        <span className="flex-1 truncate"><b className="text-foreground">{selected.name}</b> · {selected.company}</span>
+        <button type="button" onClick={() => { onChange(''); setQuery(''); setOpen(true); }} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+          <Icon name="X" size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Имя, компания, телефон или ИНН..."
+        className="crm-input"
+      />
+      {open && (
+        <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {results.length === 0 && <div className="p-3 text-xs text-muted-foreground text-center">Ничего не найдено</div>}
+          {results.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => { onChange(c.id); setQuery(''); setOpen(false); }}
+              className="w-full text-left px-3 py-2 hover:bg-secondary/60 transition-colors border-b border-border/40 last:border-0"
+            >
+              <div className="text-sm font-medium text-foreground">{c.name}</div>
+              <div className="text-xs text-muted-foreground">{c.company} · {c.phone}{c.inn ? ` · ИНН ${c.inn}` : ''}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── New Task Modal ────────────────────────────────────────────────────────────
 function NewTaskModal({ onClose }: { onClose: () => void }) {
@@ -81,10 +140,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
 
           <div>
             <label className="field-label">Клиент</label>
-            <select value={clientId} onChange={e => handleClientChange(e.target.value)} className="crm-input">
-              <option value="">— Выбрать клиента —</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name} · {c.company}</option>)}
-            </select>
+            <ClientPicker clientId={clientId} onChange={handleClientChange} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -123,20 +179,13 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Task detail modal with comments ─────────────────────────────────────────
+// ── Task detail modal with side comments panel ──────────────────────────────
 function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void }) {
   const { clients, comments } = useStore();
-  const [commentText, setCommentText] = useState('');
   const assignee = USERS.find(u => u.id === task.assigneeId);
   const client = clients.find(c => c.id === task.clientId);
   const taskComments = comments.filter(c => c.entityId === task.id);
   const currentUser = USERS[0];
-
-  const sendComment = () => {
-    if (!commentText.trim()) return;
-    addComment(task.id, commentText, currentUser.id);
-    setCommentText('');
-  };
 
   const markDone = () => {
     updateTaskStatus(task.id, 'done');
@@ -146,7 +195,7 @@ function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void })
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col animate-scale-in" style={{ maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col animate-scale-in" style={{ height: '600px', maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
         <div className="px-6 pt-5 pb-4 border-b border-border/60 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div className="flex-1 pr-4">
@@ -161,8 +210,8 @@ function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void })
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          <div className="space-y-2">
+        <div className="flex-1 flex min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 border-r border-border/60 min-w-0">
             {[
               { icon: 'User', label: 'Исполнитель', value: assignee?.name },
               { icon: 'Users', label: 'Клиент', value: client?.name },
@@ -177,36 +226,8 @@ function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void })
             ))}
           </div>
 
-          {/* Comments */}
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
-              Комментарии {taskComments.length > 0 && `(${taskComments.length})`}
-            </p>
-            {taskComments.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {taskComments.map(c => {
-                  const author = USERS.find(u => u.id === c.authorId);
-                  return (
-                    <div key={c.id} className="flex gap-2.5">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: 'hsl(244 80% 60%)' }}>{author?.avatar.slice(0, 1)}</div>
-                      <div className="flex-1 bg-secondary/60 rounded-xl p-2.5">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-semibold text-foreground">{author?.name.split(' ')[0]}</span>
-                          <span className="text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        <p className="text-sm text-foreground">{c.text}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendComment()} placeholder="Написать комментарий..." className="crm-input flex-1" />
-              <button onClick={sendComment} disabled={!commentText.trim()} className="px-3 py-2 rounded-xl text-white transition-all hover:opacity-90 disabled:opacity-30" style={{ background: 'hsl(244 80% 60%)' }}>
-                <Icon name="Send" size={15} />
-              </button>
-            </div>
+          <div className="w-72 flex-shrink-0 px-4 py-4 min-h-0">
+            <CommentsPanel comments={taskComments} onSend={text => addComment(task.id, text, currentUser.id)} />
           </div>
         </div>
 

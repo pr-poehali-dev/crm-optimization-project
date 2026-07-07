@@ -68,6 +68,7 @@ export interface InvoiceItem {
   name: string;
   qty: number;
   price: number;
+  unit?: string;
 }
 
 export interface SelfEmployedInfo {
@@ -78,6 +79,13 @@ export interface SelfEmployedInfo {
   account: string;
   corrAccount: string;
   phone: string;
+}
+
+export interface NomenclatureItem {
+  id: string;
+  name: string;
+  unit: string;
+  price: number;
 }
 
 export const USERS: User[] = [
@@ -155,6 +163,16 @@ export const INVOICES: Invoice[] = [
     items: [{ id: 'i5', name: 'Аналитика и ТЗ', qty: 1, price: 50000 }],
     selfEmployed: SELF_EMPLOYED_DEFAULT,
   },
+];
+
+export const NOMENCLATURE: NomenclatureItem[] = [
+  { id: 'n1', name: 'Внедрение CRM — базовый пакет', unit: 'шт.', price: 175000 },
+  { id: 'n2', name: 'Разработка мобильного приложения', unit: 'шт.', price: 200000 },
+  { id: 'n3', name: 'SEO аудит', unit: 'шт.', price: 30000 },
+  { id: 'n4', name: 'Настройка контекстной рекламы', unit: 'мес.', price: 30000 },
+  { id: 'n5', name: 'Аналитика и составление ТЗ', unit: 'шт.', price: 50000 },
+  { id: 'n6', name: 'Консультация', unit: 'час', price: 3000 },
+  { id: 'n7', name: 'Техническая поддержка', unit: 'мес.', price: 15000 },
 ];
 
 export const ROLE_LABELS: Record<Role, string> = {
