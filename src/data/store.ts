@@ -18,6 +18,23 @@ let users = [...USERS];
 let nomenclature = [...NOMENCLATURE];
 let selfEmployed: SelfEmployedInfo = { ...SELF_EMPLOYED_DEFAULT };
 
+export type DealStageId = Deal['stage'];
+export type TaskStatusId = Task['status'];
+
+let dealStageLabels: Record<DealStageId, string> = {
+  new: 'Новые',
+  negotiation: 'Переговоры',
+  proposal: 'Предложение',
+  won: 'Выиграны',
+  lost: 'Проиграны',
+};
+
+let taskStatusLabels: Record<TaskStatusId, string> = {
+  todo: 'К выполнению',
+  in_progress: 'В работе',
+  done: 'Выполнено',
+};
+
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
@@ -36,6 +53,8 @@ export function getComments() { return comments; }
 export function getUsers() { return users; }
 export function getNomenclature() { return nomenclature; }
 export function getSelfEmployed() { return selfEmployed; }
+export function getDealStageLabels() { return dealStageLabels; }
+export function getTaskStatusLabels() { return taskStatusLabels; }
 
 export function addClient(c: Client) { clients = [c, ...clients]; notify(); }
 export function addDeal(d: Deal) { deals = [d, ...deals]; notify(); }
@@ -98,6 +117,16 @@ export function updateSelfEmployed(info: SelfEmployedInfo) {
   notify();
 }
 
+export function renameDealStage(stageId: DealStageId, label: string) {
+  dealStageLabels = { ...dealStageLabels, [stageId]: label };
+  notify();
+}
+
+export function renameTaskStatus(statusId: TaskStatusId, label: string) {
+  taskStatusLabels = { ...taskStatusLabels, [statusId]: label };
+  notify();
+}
+
 export function useStore() {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -113,5 +142,7 @@ export function useStore() {
     users: getUsers(),
     nomenclature: getNomenclature(),
     selfEmployed: getSelfEmployed(),
+    dealStageLabels: getDealStageLabels(),
+    taskStatusLabels: getTaskStatusLabels(),
   };
 }

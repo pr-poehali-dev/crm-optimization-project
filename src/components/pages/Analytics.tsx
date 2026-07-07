@@ -1,42 +1,44 @@
 import Icon from '@/components/ui/icon';
-import { DEALS, CLIENTS, TASKS, INVOICES, USERS } from '@/data/mock';
+import { USERS } from '@/data/mock';
+import { useStore } from '@/data/store';
 
 export default function Analytics() {
-  const totalRevenue = INVOICES.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
-  const totalPipeline = DEALS.filter(d => !['won', 'lost'].includes(d.stage)).reduce((s, d) => s + d.amount, 0);
-  const wonDeals = DEALS.filter(d => d.stage === 'won');
-  const conversionRate = Math.round((wonDeals.length / DEALS.length) * 100);
+  const { deals, clients, tasks, invoices, dealStageLabels } = useStore();
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
+  const totalPipeline = deals.filter(d => !['won', 'lost'].includes(d.stage)).reduce((s, d) => s + d.amount, 0);
+  const wonDeals = deals.filter(d => d.stage === 'won');
+  const conversionRate = deals.length > 0 ? Math.round((wonDeals.length / deals.length) * 100) : 0;
   const avgDeal = wonDeals.length > 0 ? Math.round(wonDeals.reduce((s, d) => s + d.amount, 0) / wonDeals.length) : 0;
 
   const managerStats = USERS.filter(u => u.role === 'sales').map(u => {
-    const myDeals = DEALS.filter(d => d.managerId === u.id);
+    const myDeals = deals.filter(d => d.managerId === u.id);
     const myWon = myDeals.filter(d => d.stage === 'won');
-    const myRevenue = INVOICES.filter(i => i.managerId === u.id && i.status === 'paid').reduce((s, i) => s + i.amount, 0);
+    const myRevenue = invoices.filter(i => i.managerId === u.id && i.status === 'paid').reduce((s, i) => s + i.amount, 0);
     return {
       user: u,
       deals: myDeals.length,
       won: myWon.length,
       revenue: myRevenue,
-      clients: CLIENTS.filter(c => c.managerId === u.id).length,
-      tasks: TASKS.filter(t => t.assigneeId === u.id).length,
+      clients: clients.filter(c => c.managerId === u.id).length,
+      tasks: tasks.filter(t => t.assigneeId === u.id).length,
     };
   });
 
   const maxRevenue = Math.max(...managerStats.map(m => m.revenue), 1);
 
-  const stageData = [
-    { label: 'Новые', count: DEALS.filter(d => d.stage === 'new').length, color: 'hsl(214 84% 56%)', pct: 0 },
-    { label: 'Переговоры', count: DEALS.filter(d => d.stage === 'negotiation').length, color: 'hsl(38 95% 55%)', pct: 0 },
-    { label: 'Предложение', count: DEALS.filter(d => d.stage === 'proposal').length, color: 'hsl(244 80% 60%)', pct: 0 },
-    { label: 'Выиграны', count: DEALS.filter(d => d.stage === 'won').length, color: 'hsl(158 64% 45%)', pct: 0 },
-    { label: 'Проиграны', count: DEALS.filter(d => d.stage === 'lost').length, color: 'hsl(350 80% 58%)', pct: 0 },
-  ].map(d => ({ ...d, pct: DEALS.length > 0 ? Math.round((d.count / DEALS.length) * 100) : 0 }));
+  const stageColorMap: Record<string, string> = {
+    new: 'hsl(214 84% 56%)', negotiation: 'hsl(38 95% 55%)', proposal: 'hsl(244 80% 60%)', won: 'hsl(158 64% 45%)', lost: 'hsl(350 80% 58%)',
+  };
+  const stageData = Object.entries(dealStageLabels).map(([stage, label]) => {
+    const count = deals.filter(d => d.stage === stage).length;
+    return { label, count, color: stageColorMap[stage] || 'hsl(220 14% 46%)', pct: deals.length > 0 ? Math.round((count / deals.length) * 100) : 0 };
+  });
 
   const invoiceStats = [
-    { label: 'Оплачено', count: INVOICES.filter(i => i.status === 'paid').length, color: 'hsl(158 64% 45%)' },
-    { label: 'Отправлено', count: INVOICES.filter(i => i.status === 'sent').length, color: 'hsl(214 84% 56%)' },
-    { label: 'Просрочено', count: INVOICES.filter(i => i.status === 'overdue').length, color: 'hsl(350 80% 58%)' },
-    { label: 'Черновики', count: INVOICES.filter(i => i.status === 'draft').length, color: 'hsl(220 14% 46%)' },
+    { label: 'Оплачено', count: invoices.filter(i => i.status === 'paid').length, color: 'hsl(158 64% 45%)' },
+    { label: 'Отправлено', count: invoices.filter(i => i.status === 'sent').length, color: 'hsl(214 84% 56%)' },
+    { label: 'Просрочено', count: invoices.filter(i => i.status === 'overdue').length, color: 'hsl(350 80% 58%)' },
+    { label: 'Черновики', count: invoices.filter(i => i.status === 'draft').length, color: 'hsl(220 14% 46%)' },
   ];
 
   return (
@@ -51,7 +53,7 @@ export default function Analytics() {
         {[
           { label: 'Выручка (оплачено)', value: `${(totalRevenue/1000).toFixed(0)} тыс ₽`, sub: 'по оплаченным счетам', icon: 'CircleDollarSign', color: 'hsl(158 64% 45%)', bg: 'bg-emerald-50' },
           { label: 'Воронка (pipeline)', value: `${(totalPipeline/1000).toFixed(0)} тыс ₽`, sub: 'активные сделки', icon: 'TrendingUp', color: 'hsl(244 80% 60%)', bg: 'bg-violet-50' },
-          { label: 'Конверсия', value: `${conversionRate}%`, sub: `${wonDeals.length} из ${DEALS.length} сделок`, icon: 'Target', color: 'hsl(38 95% 55%)', bg: 'bg-amber-50' },
+          { label: 'Конверсия', value: `${conversionRate}%`, sub: `${wonDeals.length} из ${deals.length} сделок`, icon: 'Target', color: 'hsl(38 95% 55%)', bg: 'bg-amber-50' },
           { label: 'Средняя сделка', value: `${(avgDeal/1000).toFixed(0)} тыс ₽`, sub: 'по выигранным', icon: 'Award', color: 'hsl(188 85% 45%)', bg: 'bg-cyan-50' },
         ].map((m, i) => (
           <div key={i} className="metric-card card-hover">
@@ -99,7 +101,7 @@ export default function Analytics() {
                 <div
                   className="w-full rounded-xl transition-all duration-700"
                   style={{
-                    height: `${Math.max((s.count / INVOICES.length) * 120, s.count > 0 ? 20 : 4)}px`,
+                    height: `${Math.max((s.count / (invoices.length || 1)) * 120, s.count > 0 ? 20 : 4)}px`,
                     background: s.color,
                     opacity: 0.85,
                   }}
@@ -148,9 +150,9 @@ export default function Analytics() {
       {/* Client stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Активных клиентов', value: CLIENTS.filter(c => c.status === 'active').length, icon: 'UserCheck', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Лидов', value: CLIENTS.filter(c => c.status === 'lead').length, icon: 'UserPlus', color: 'text-violet-600', bg: 'bg-violet-50' },
-          { label: 'Неактивных', value: CLIENTS.filter(c => c.status === 'inactive').length, icon: 'UserMinus', color: 'text-slate-500', bg: 'bg-slate-50' },
+          { label: 'Активных клиентов', value: clients.filter(c => c.status === 'active').length, icon: 'UserCheck', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'Лидов', value: clients.filter(c => c.status === 'lead').length, icon: 'UserPlus', color: 'text-violet-600', bg: 'bg-violet-50' },
+          { label: 'Неактивных', value: clients.filter(c => c.status === 'inactive').length, icon: 'UserMinus', color: 'text-slate-500', bg: 'bg-slate-50' },
         ].map(m => (
           <div key={m.label} className="metric-card">
             <div className={`w-10 h-10 rounded-xl ${m.bg} flex items-center justify-center mb-3`}>

@@ -1,7 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
-import { CLIENTS, USERS, type Invoice, type InvoiceItem } from '@/data/mock';
-import { useStore, addInvoice } from '@/data/store';
+import { CLIENTS, USERS, type Invoice, type InvoiceItem, type Client } from '@/data/mock';
+import { useStore, addInvoice, addClient } from '@/data/store';
+import ClientPicker from '@/components/ClientPicker';
+import { resolveINN } from '@/lib/inn';
 
 const statusConfig: Record<string, { label: string; badge: string }> = {
   draft: { label: 'Черновик', badge: 'bg-slate-100 text-slate-600' },
@@ -261,9 +263,72 @@ function NomenclatureCombobox({ value, onChange, onPick }: { value: string; onCh
   );
 }
 
+// ── Quick "new client by INN" inline form ────────────────────────────────────
+function NewClientByInn({ onCreated }: { onCreated: (clientId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [inn, setInn] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [company, setCompany] = useState('');
+  const [innLoading, setInnLoading] = useState(false);
+  const [innFound, setInnFound] = useState(false);
+  const [err, setErr] = useState('');
+  const innTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (inn.length < 10) { setInnFound(false); return; }
+    setInnLoading(true);
+    clearTimeout(innTimer.current);
+    innTimer.current = setTimeout(async () => {
+      const found = await resolveINN(inn);
+      setInnLoading(false);
+      if (found) { setCompany(found); setInnFound(true); } else setInnFound(false);
+    }, 300);
+  }, [inn]);
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-primary font-semibold flex items-center gap-1 hover:opacity-75">
+        <Icon name="UserPlus" size={13} />Не нашли клиента? Добавить по ИНН
+      </button>
+    );
+  }
+
+  const handleCreate = () => {
+    if (!name.trim() || !phone.trim()) { setErr('Укажите имя и телефон'); return; }
+    const newId = `c${Date.now()}`;
+    addClient({ id: newId, name, company: company || 'Не указана', email: '', phone, status: 'lead', managerId: USERS[1].id, createdAt: new Date().toISOString().split('T')[0], tags: ['Новый'], inn: inn || undefined } as Client);
+    onCreated(newId);
+  };
+
+  return (
+    <div className="border border-dashed border-primary/40 rounded-xl p-3 space-y-2 bg-primary/5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Новый клиент по ИНН</span>
+        <button type="button" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground"><Icon name="X" size={14} /></button>
+      </div>
+      <div className="relative">
+        <input value={inn} onChange={e => setInn(e.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="ИНН — подтянем компанию" className="crm-input pr-8" />
+        {innLoading && <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+        {innFound && !innLoading && <Icon name="CheckCircle" size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />}
+      </div>
+      {innFound && <p className="text-xs text-emerald-600 flex items-center gap-1"><Icon name="Building2" size={11} />Найдено: <b>{company}</b></p>}
+      {!innFound && <input value={company} onChange={e => setCompany(e.target.value)} placeholder="Компания" className="crm-input" />}
+      <div className="grid grid-cols-2 gap-2">
+        <input value={name} onChange={e => { setName(e.target.value); setErr(''); }} placeholder="Имя *" className="crm-input" />
+        <input value={phone} onChange={e => { setPhone(e.target.value); setErr(''); }} placeholder="Телефон *" className="crm-input" />
+      </div>
+      {err && <p className="text-xs text-rose-500">{err}</p>}
+      <button type="button" onClick={handleCreate} className="w-full py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-all" style={{ background: 'hsl(244 80% 60%)' }}>
+        Создать и выбрать клиента
+      </button>
+    </div>
+  );
+}
+
 // ── Invoice form modal ────────────────────────────────────────────────────────
 export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { onClose: () => void; prefillDealId?: string; prefillClientId?: string }) {
-  const { clients, deals, invoices, selfEmployed } = useStore();
+  const { deals, invoices, selfEmployed } = useStore();
   const [clientId, setClientId] = useState(prefillClientId ?? '');
   const [dealId, setDealId] = useState(prefillDealId ?? '');
   const [items, setItems] = useState<InvoiceItem[]>([{ id: '1', name: '', qty: 1, price: 0, unit: 'шт.' }]);
@@ -312,14 +377,17 @@ export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { 
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Client & Deal */}
+          <div>
+            <label className="field-label">Клиент * — поиск по имени, компании, телефону или ИНН</label>
+            <ClientPicker clientId={clientId} onChange={setClientId} placeholder="Введите ИНН, телефон, имя или компанию..." />
+            {!clientId && (
+              <div className="mt-2">
+                <NewClientByInn onCreated={id => setClientId(id)} />
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="field-label">Клиент *</label>
-              <select value={clientId} onChange={e => setClientId(e.target.value)} className="crm-input">
-                <option value="">— Выберите клиента —</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name} · {c.company}</option>)}
-              </select>
-            </div>
             <div>
               <label className="field-label">Сделка</label>
               <select value={dealId} onChange={e => setDealId(e.target.value)} className="crm-input">
@@ -327,9 +395,8 @@ export function InvoiceFormModal({ onClose, prefillDealId, prefillClientId }: { 
                 {deals.filter(d => !clientId || d.clientId === clientId).map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
               </select>
             </div>
+            <div><label className="field-label">Срок оплаты</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="crm-input" /></div>
           </div>
-
-          <div><label className="field-label">Срок оплаты</label><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="crm-input" /></div>
 
           <div className="flex items-center gap-2 p-3 rounded-xl bg-secondary/50 text-xs text-muted-foreground">
             <Icon name="Landmark" size={14} className="flex-shrink-0" />

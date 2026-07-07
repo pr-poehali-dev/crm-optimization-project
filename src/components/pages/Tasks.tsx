@@ -1,87 +1,30 @@
 import { useState, useRef } from 'react';
 import Icon from '@/components/ui/icon';
 import { USERS, type Task } from '@/data/mock';
-import { useStore, addTask, addComment, updateTaskStatus } from '@/data/store';
+import { useStore, addTask, addComment, updateTaskStatus, renameTaskStatus, type TaskStatusId } from '@/data/store';
 import CommentsPanel from '@/components/CommentsPanel';
+import ClientPicker from '@/components/ClientPicker';
 
 const priorityConfig: Record<string, { label: string; badge: string; dot: string }> = {
   high: { label: 'Высокий', badge: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
   medium: { label: 'Средний', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
   low: { label: 'Низкий', badge: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
 };
-const statusConfig: Record<string, { label: string; badge: string }> = {
-  todo: { label: 'К выполнению', badge: 'bg-slate-100 text-slate-600' },
-  in_progress: { label: 'В работе', badge: 'bg-blue-100 text-blue-700' },
-  done: { label: 'Выполнено', badge: 'bg-emerald-100 text-emerald-700' },
+const statusBadgeCls: Record<TaskStatusId, string> = {
+  todo: 'bg-slate-100 text-slate-600',
+  in_progress: 'bg-blue-100 text-blue-700',
+  done: 'bg-emerald-100 text-emerald-700',
 };
-const columns = [
-  { id: 'todo', label: 'К выполнению', color: 'hsl(220 14% 46%)' },
-  { id: 'in_progress', label: 'В работе', color: 'hsl(214 84% 56%)' },
-  { id: 'done', label: 'Выполнено', color: 'hsl(158 64% 45%)' },
+const columnVisuals: { id: TaskStatusId; color: string }[] = [
+  { id: 'todo', color: 'hsl(220 14% 46%)' },
+  { id: 'in_progress', color: 'hsl(214 84% 56%)' },
+  { id: 'done', color: 'hsl(158 64% 45%)' },
 ];
 const priorityOpts = [
   { id: 'low' as Task['priority'], label: 'Низкий', cls: 'bg-slate-100 text-slate-600' },
   { id: 'medium' as Task['priority'], label: 'Средний', cls: 'bg-amber-100 text-amber-700' },
   { id: 'high' as Task['priority'], label: 'Высокий', cls: 'bg-rose-100 text-rose-700' },
 ];
-
-// ── Client searchable picker ─────────────────────────────────────────────────
-function ClientPicker({ clientId, onChange }: { clientId: string; onChange: (id: string) => void }) {
-  const { clients } = useStore();
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const selected = clients.find(c => c.id === clientId);
-
-  const results = clients.filter(c => {
-    const q = query.toLowerCase().trim();
-    const qDigits = query.replace(/\D/g, '');
-    if (!q) return true;
-    return c.name.toLowerCase().includes(q) ||
-      c.company.toLowerCase().includes(q) ||
-      (qDigits.length > 2 && c.phone.replace(/\D/g, '').includes(qDigits)) ||
-      (qDigits.length > 2 && (c.inn || '').includes(qDigits));
-  }).slice(0, 6);
-
-  if (selected && !open) {
-    return (
-      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-secondary/60 text-sm">
-        <Icon name="User" size={14} className="text-muted-foreground flex-shrink-0" />
-        <span className="flex-1 truncate"><b className="text-foreground">{selected.name}</b> · {selected.company}</span>
-        <button type="button" onClick={() => { onChange(''); setQuery(''); setOpen(true); }} className="text-muted-foreground hover:text-foreground flex-shrink-0">
-          <Icon name="X" size={14} />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      <input
-        value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        placeholder="Имя, компания, телефон или ИНН..."
-        className="crm-input"
-      />
-      {open && (
-        <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto">
-          {results.length === 0 && <div className="p-3 text-xs text-muted-foreground text-center">Ничего не найдено</div>}
-          {results.map(c => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => { onChange(c.id); setQuery(''); setOpen(false); }}
-              className="w-full text-left px-3 py-2 hover:bg-secondary/60 transition-colors border-b border-border/40 last:border-0"
-            >
-              <div className="text-sm font-medium text-foreground">{c.name}</div>
-              <div className="text-xs text-muted-foreground">{c.company} · {c.phone}{c.inn ? ` · ИНН ${c.inn}` : ''}</div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── New Task Modal ────────────────────────────────────────────────────────────
 function NewTaskModal({ onClose }: { onClose: () => void }) {
@@ -181,7 +124,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
 
 // ── Task detail modal with side comments panel ──────────────────────────────
 function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { clients, comments } = useStore();
+  const { clients, comments, taskStatusLabels } = useStore();
   const assignee = USERS.find(u => u.id === task.assigneeId);
   const client = clients.find(c => c.id === task.clientId);
   const taskComments = comments.filter(c => c.entityId === task.id);
@@ -205,7 +148,7 @@ function TaskDetailModal({ task, onClose }: { task: Task; onClose: () => void })
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground flex-shrink-0"><Icon name="X" size={20} /></button>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
-            <span className={`status-badge ${statusConfig[task.status].badge}`}>{statusConfig[task.status].label}</span>
+            <span className={`status-badge ${statusBadgeCls[task.status]}`}>{taskStatusLabels[task.status]}</span>
             <span className={`status-badge ${priorityConfig[task.priority].badge}`}>{priorityConfig[task.priority].label}</span>
           </div>
         </div>
@@ -274,13 +217,26 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-export default function Tasks() {
-  const { tasks } = useStore();
+export default function Tasks({ isAdmin }: { isAdmin?: boolean } = {}) {
+  const { tasks, taskStatusLabels } = useStore();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Task | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [assigneeFilter, setAssigneeFilter] = useState('all');
+  const [editingStatus, setEditingStatus] = useState<TaskStatusId | null>(null);
+  const [editStatusValue, setEditStatusValue] = useState('');
   const dragId = useRef<string | null>(null);
+
+  const startEditStatus = (statusId: TaskStatusId, current: string) => {
+    setEditingStatus(statusId);
+    setEditStatusValue(current);
+  };
+  const saveEditStatus = () => {
+    if (editingStatus && editStatusValue.trim()) {
+      renameTaskStatus(editingStatus, editStatusValue.trim());
+    }
+    setEditingStatus(null);
+  };
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     dragId.current = taskId;
@@ -336,14 +292,31 @@ export default function Tasks() {
         </div>
 
         <div className="grid grid-cols-3 gap-5">
-          {columns.map(col => {
+          {columnVisuals.map(col => {
             const colTasks = filtered.filter(t => t.status === col.id);
+            const label = taskStatusLabels[col.id];
             return (
               <div key={col.id} onDragOver={handleDragOver} onDrop={e => handleDrop(e, col.id)}>
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2 h-2 rounded-full" style={{ background: col.color }} />
-                  <span className="text-sm font-semibold text-foreground">{col.label}</span>
-                  <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground ml-auto">{colTasks.length}</span>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: col.color }} />
+                  {editingStatus === col.id ? (
+                    <input
+                      autoFocus
+                      value={editStatusValue}
+                      onChange={e => setEditStatusValue(e.target.value)}
+                      onBlur={saveEditStatus}
+                      onKeyDown={e => { if (e.key === 'Enter') saveEditStatus(); if (e.key === 'Escape') setEditingStatus(null); }}
+                      className="text-sm font-semibold text-foreground bg-white border border-primary rounded-md px-1.5 py-0.5 outline-none min-w-0 flex-1"
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold text-foreground truncate">{label}</span>
+                  )}
+                  <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground flex-shrink-0">{colTasks.length}</span>
+                  {isAdmin && editingStatus !== col.id && (
+                    <button onClick={() => startEditStatus(col.id, label)} className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0 ml-auto">
+                      <Icon name="Pencil" size={12} />
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-2.5 min-h-[60px] rounded-xl p-1 transition-colors">
                   {colTasks.map(task => (

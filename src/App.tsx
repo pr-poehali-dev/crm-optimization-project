@@ -49,8 +49,8 @@ function CRMApp() {
   const renderPage = () => {
     if (page === 'clients') return <Clients onOpenDeal={openDealFromClient} />;
     if (page === 'deals' && ['admin', 'sales'].includes(currentUser.role))
-      return <Deals onOpenInvoice={openInvoice} openDealId={openDealId} onDealOpened={() => setOpenDealId(null)} />;
-    if (page === 'tasks') return <Tasks />;
+      return <Deals onOpenInvoice={openInvoice} openDealId={openDealId} onDealOpened={() => setOpenDealId(null)} isAdmin={currentUser.role === 'admin'} />;
+    if (page === 'tasks') return <Tasks isAdmin={currentUser.role === 'admin'} />;
     if (page === 'invoices' && ['admin', 'sales'].includes(currentUser.role))
       return <Invoices />;
     if (page === 'nomenclature' && currentUser.role === 'admin') return <Nomenclature />;

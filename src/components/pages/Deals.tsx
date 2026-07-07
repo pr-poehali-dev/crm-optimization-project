@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 import { USERS, type Deal, type Client, type Task } from '@/data/mock';
-import { useStore, addClient, addDeal, addTask, addComment, updateDealStage } from '@/data/store';
+import { useStore, addClient, addDeal, addTask, addComment, updateDealStage, renameDealStage, type DealStageId } from '@/data/store';
 import CommentsPanel from '@/components/CommentsPanel';
 import { resolveINN } from '@/lib/inn';
 
-const stages = [
-  { id: 'new', label: 'Новые', color: 'hsl(214 84% 56%)', badge: 'bg-blue-100 text-blue-700' },
-  { id: 'negotiation', label: 'Переговоры', color: 'hsl(38 95% 55%)', badge: 'bg-amber-100 text-amber-700' },
-  { id: 'proposal', label: 'Предложение', color: 'hsl(244 80% 60%)', badge: 'bg-violet-100 text-violet-700' },
-  { id: 'won', label: 'Выиграны', color: 'hsl(158 64% 45%)', badge: 'bg-emerald-100 text-emerald-700' },
-  { id: 'lost', label: 'Проиграны', color: 'hsl(350 80% 58%)', badge: 'bg-rose-100 text-rose-700' },
+const stageVisuals: { id: DealStageId; color: string; badge: string }[] = [
+  { id: 'new', color: 'hsl(214 84% 56%)', badge: 'bg-blue-100 text-blue-700' },
+  { id: 'negotiation', color: 'hsl(38 95% 55%)', badge: 'bg-amber-100 text-amber-700' },
+  { id: 'proposal', color: 'hsl(244 80% 60%)', badge: 'bg-violet-100 text-violet-700' },
+  { id: 'won', color: 'hsl(158 64% 45%)', badge: 'bg-emerald-100 text-emerald-700' },
+  { id: 'lost', color: 'hsl(350 80% 58%)', badge: 'bg-rose-100 text-rose-700' },
 ];
 
 const priorityOpts = [
@@ -83,11 +83,12 @@ function TaskModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
 
 // ── DealModal with side comments panel ───────────────────────────────────────
 function DealModal({ deal, onClose, onInvoice }: { deal: Deal; onClose: () => void; onInvoice: (deal: Deal) => void }) {
-  const { clients, tasks, comments } = useStore();
+  const { clients, tasks, comments, dealStageLabels } = useStore();
   const [showTask, setShowTask] = useState(false);
   const client = clients.find(c => c.id === deal.clientId);
   const manager = USERS.find(u => u.id === deal.managerId);
-  const stage = stages.find(s => s.id === deal.stage);
+  const stageVisual = stageVisuals.find(s => s.id === deal.stage);
+  const stage = stageVisual ? { ...stageVisual, label: dealStageLabels[deal.stage] } : undefined;
   const dealTasks = tasks.filter(t => t.dealId === deal.id);
   const dealComments = comments.filter(c => c.entityId === deal.id);
   const currentUser = USERS[0];
@@ -172,6 +173,7 @@ function DealModal({ deal, onClose, onInvoice }: { deal: Deal; onClose: () => vo
 
 // ── NewDealModal ─────────────────────────────────────────────────────────────
 function NewDealModal({ onClose }: { onClose: () => void }) {
+  const { dealStageLabels } = useStore();
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientCompany, setClientCompany] = useState('');
@@ -261,7 +263,7 @@ function NewDealModal({ onClose }: { onClose: () => void }) {
               </div>
               <div><label className="field-label">Этап воронки</label>
                 <div className="flex gap-1.5 flex-wrap">
-                  {stages.map(s => <button key={s.id} type="button" onClick={() => setDealStage(s.id as Deal['stage'])} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${dealStage === s.id ? `${s.badge} border-current` : 'border-transparent bg-secondary text-muted-foreground hover:bg-secondary/70'}`}><div className="w-1.5 h-1.5 rounded-full" style={{ background: dealStage === s.id ? s.color : 'currentColor', opacity: dealStage === s.id ? 1 : 0.4 }} />{s.label}</button>)}
+                  {stageVisuals.map(s => <button key={s.id} type="button" onClick={() => setDealStage(s.id)} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all ${dealStage === s.id ? `${s.badge} border-current` : 'border-transparent bg-secondary text-muted-foreground hover:bg-secondary/70'}`}><div className="w-1.5 h-1.5 rounded-full" style={{ background: dealStage === s.id ? s.color : 'currentColor', opacity: dealStage === s.id ? 1 : 0.4 }} />{dealStageLabels[s.id]}</button>)}
                 </div>
               </div>
               <div><label className="field-label">Комментарий</label><textarea value={dealComment} onChange={e => setDealComment(e.target.value)} placeholder="Откуда пришёл клиент, что обсудили..." rows={2} className="crm-input resize-none" /></div>
@@ -280,13 +282,26 @@ function NewDealModal({ onClose }: { onClose: () => void }) {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-export default function Deals({ onOpenInvoice, openDealId, onDealOpened }: { onOpenInvoice?: (dealId: string, clientId: string) => void; openDealId?: string | null; onDealOpened?: () => void }) {
-  const { deals, clients } = useStore();
+export default function Deals({ onOpenInvoice, openDealId, onDealOpened, isAdmin }: { onOpenInvoice?: (dealId: string, clientId: string) => void; openDealId?: string | null; onDealOpened?: () => void; isAdmin?: boolean }) {
+  const { deals, clients, dealStageLabels } = useStore();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'kanban' | 'list'>('kanban');
   const [selected, setSelected] = useState<Deal | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [editingStage, setEditingStage] = useState<DealStageId | null>(null);
+  const [editStageValue, setEditStageValue] = useState('');
   const dragId = useRef<string | null>(null);
+
+  const startEditStage = (stageId: DealStageId, current: string) => {
+    setEditingStage(stageId);
+    setEditStageValue(current);
+  };
+  const saveEditStage = () => {
+    if (editingStage && editStageValue.trim()) {
+      renameDealStage(editingStage, editStageValue.trim());
+    }
+    setEditingStage(null);
+  };
 
   useEffect(() => {
     if (openDealId) {
@@ -355,18 +370,35 @@ export default function Deals({ onOpenInvoice, openDealId, onDealOpened }: { onO
 
         {view === 'kanban' ? (
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {stages.map(stage => {
+            {stageVisuals.map(stage => {
               const stageDeals = filtered.filter(d => d.stage === stage.id);
               const total = stageDeals.reduce((s, d) => s + d.amount, 0);
+              const label = dealStageLabels[stage.id];
               return (
                 <div key={stage.id} className="flex-shrink-0 w-64" onDragOver={handleDragOver} onDrop={e => handleDrop(e, stage.id)}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full" style={{ background: stage.color }} />
-                      <span className="text-sm font-semibold text-foreground">{stage.label}</span>
-                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{stageDeals.length}</span>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stage.color }} />
+                      {editingStage === stage.id ? (
+                        <input
+                          autoFocus
+                          value={editStageValue}
+                          onChange={e => setEditStageValue(e.target.value)}
+                          onBlur={saveEditStage}
+                          onKeyDown={e => { if (e.key === 'Enter') saveEditStage(); if (e.key === 'Escape') setEditingStage(null); }}
+                          className="text-sm font-semibold text-foreground bg-white border border-primary rounded-md px-1.5 py-0.5 outline-none min-w-0 flex-1"
+                        />
+                      ) : (
+                        <span className="text-sm font-semibold text-foreground truncate">{label}</span>
+                      )}
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground flex-shrink-0">{stageDeals.length}</span>
+                      {isAdmin && editingStage !== stage.id && (
+                        <button onClick={() => startEditStage(stage.id, label)} className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0">
+                          <Icon name="Pencil" size={12} />
+                        </button>
+                      )}
                     </div>
-                    {total > 0 && <span className="text-xs text-muted-foreground font-medium">{(total / 1000).toFixed(0)}K ₽</span>}
+                    {total > 0 && <span className="text-xs text-muted-foreground font-medium flex-shrink-0 ml-1">{(total / 1000).toFixed(0)}K ₽</span>}
                   </div>
                   <div className="space-y-2.5 min-h-[60px] rounded-xl transition-colors p-1">
                     {stageDeals.map(deal => {
@@ -407,14 +439,14 @@ export default function Deals({ onOpenInvoice, openDealId, onDealOpened }: { onO
                 {filtered.map(deal => {
                   const client = clients.find(c => c.id === deal.clientId);
                   const manager = USERS.find(u => u.id === deal.managerId);
-                  const stage = stages.find(s => s.id === deal.stage);
+                  const stage = stageVisuals.find(s => s.id === deal.stage);
                   return (
                     <tr key={deal.id} className="hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => setSelected(deal)}>
                       <td className="px-4 py-3.5 text-sm font-semibold text-foreground">{deal.title}</td>
                       <td className="px-4 py-3.5 text-sm text-muted-foreground">{client?.company || client?.name}</td>
                       <td className="px-4 py-3.5 text-sm text-muted-foreground">{manager?.name.split(' ')[0]}</td>
                       <td className="px-4 py-3.5 text-sm font-bold text-foreground">{deal.amount > 0 ? `${deal.amount.toLocaleString('ru-RU')} ₽` : '—'}</td>
-                      <td className="px-4 py-3.5"><span className={`status-badge ${stage?.badge}`}>{stage?.label}</span></td>
+                      <td className="px-4 py-3.5"><span className={`status-badge ${stage?.badge}`}>{dealStageLabels[deal.stage]}</span></td>
                       <td className="px-4 py-3.5 text-sm text-muted-foreground">{new Date(deal.createdAt).toLocaleDateString('ru-RU')}</td>
                     </tr>
                   );

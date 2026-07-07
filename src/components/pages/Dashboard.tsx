@@ -1,5 +1,6 @@
 import Icon from '@/components/ui/icon';
-import { CLIENTS, DEALS, TASKS, INVOICES, USERS } from '@/data/mock';
+import { USERS } from '@/data/mock';
+import { useStore } from '@/data/store';
 
 const stageColors: Record<string, string> = {
   new: 'bg-blue-100 text-blue-700',
@@ -7,9 +8,6 @@ const stageColors: Record<string, string> = {
   proposal: 'bg-violet-100 text-violet-700',
   won: 'bg-emerald-100 text-emerald-700',
   lost: 'bg-rose-100 text-rose-700',
-};
-const stageLabels: Record<string, string> = {
-  new: 'Новая', negotiation: 'Переговоры', proposal: 'Предложение', won: 'Выиграна', lost: 'Проиграна',
 };
 
 const priorityColor: Record<string, string> = {
@@ -20,13 +18,14 @@ const priorityColor: Record<string, string> = {
 const priorityLabel: Record<string, string> = { high: 'Высокий', medium: 'Средний', low: 'Низкий' };
 
 export default function Dashboard() {
-  const totalRevenue = INVOICES.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
-  const activeDeals = DEALS.filter(d => !['won', 'lost'].includes(d.stage)).length;
-  const openTasks = TASKS.filter(t => t.status !== 'done').length;
-  const activeClients = CLIENTS.filter(c => c.status === 'active').length;
+  const { clients, deals, tasks, invoices, dealStageLabels } = useStore();
+  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0);
+  const activeDeals = deals.filter(d => !['won', 'lost'].includes(d.stage)).length;
+  const openTasks = tasks.filter(t => t.status !== 'done').length;
+  const activeClients = clients.filter(c => c.status === 'active').length;
 
-  const recentDeals = DEALS.slice(0, 4);
-  const pendingTasks = TASKS.filter(t => t.status !== 'done').slice(0, 5);
+  const recentDeals = deals.slice(0, 4);
+  const pendingTasks = tasks.filter(t => t.status !== 'done').slice(0, 5);
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -66,7 +65,7 @@ export default function Dashboard() {
           </div>
           <div className="divide-y divide-border/40">
             {recentDeals.map(deal => {
-              const client = CLIENTS.find(c => c.id === deal.clientId);
+              const client = clients.find(c => c.id === deal.clientId);
               return (
                 <div key={deal.id} className="px-5 py-3.5 hover:bg-secondary/30 transition-colors">
                   <div className="flex items-center justify-between gap-2">
@@ -75,7 +74,7 @@ export default function Dashboard() {
                       <p className="text-xs text-muted-foreground mt-0.5">{client?.company}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`status-badge ${stageColors[deal.stage]}`}>{stageLabels[deal.stage]}</span>
+                      <span className={`status-badge ${stageColors[deal.stage]}`}>{dealStageLabels[deal.stage]}</span>
                       <span className="text-sm font-bold text-foreground">{(deal.amount / 1000).toFixed(0)}K</span>
                     </div>
                   </div>
@@ -122,9 +121,9 @@ export default function Dashboard() {
       <div className="bg-white rounded-2xl border border-border/50 shadow-sm p-5">
         <h2 className="font-semibold text-foreground mb-4">Воронка продаж</h2>
         <div className="flex gap-2">
-          {Object.entries(stageLabels).map(([stage, label]) => {
-            const count = DEALS.filter(d => d.stage === stage).length;
-            const sum = DEALS.filter(d => d.stage === stage).reduce((s, d) => s + d.amount, 0);
+          {Object.entries(dealStageLabels).map(([stage, label]) => {
+            const count = deals.filter(d => d.stage === stage).length;
+            const sum = deals.filter(d => d.stage === stage).reduce((s, d) => s + d.amount, 0);
             return (
               <div key={stage} className="flex-1 text-center">
                 <div className={`rounded-xl p-3 mb-2 ${stageColors[stage]}`}>
